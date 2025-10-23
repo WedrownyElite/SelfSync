@@ -522,13 +522,6 @@ class _MoodLogScreenState extends State<MoodLogScreen>
               children: [
                 Row(
                   children: [
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                      style: IconButton.styleFrom(
-                        backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
-                      ),
-                    ),
                     const SizedBox(width: 12),
                     Text(
                       'Mood Log',
@@ -1343,7 +1336,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
                   shape: BoxShape.circle,
                 ),
                 child: IconButton(
-                  onPressed: _sendMessage,
+                  onPressed: _sendMessage,  
                   icon: const Icon(Icons.send_rounded),
                   color: Colors.white,
                 ),
