@@ -2,6 +2,7 @@
 import '../services/mood_service.dart';
 import '../models/mood_entry.dart';
 import 'package:intl/intl.dart';
+import '../widgets/side_drawer.dart';
 
 enum DisplayMode {
   solid,
@@ -12,11 +13,13 @@ enum DisplayMode {
 class CalendarScreen extends StatefulWidget {
   final MoodService moodService;
   final Function(DateTime)? onDateSelected;
+  final SideDrawerController drawerController;
 
   const CalendarScreen({
     super.key,
     required this.moodService,
     this.onDateSelected,
+    required this.drawerController,
   });
 
   @override
@@ -421,7 +424,11 @@ class _CalendarScreenState extends State<CalendarScreen>
       ),
       child: Row(
         children: [
+          // ADD HAMBURGER BUTTON
+          HamburgerMenuButton(controller: widget.drawerController),
           const SizedBox(width: 12),
+
+          // EXISTING CODE BELOW
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

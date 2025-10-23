@@ -4,6 +4,7 @@ import 'screens/mood_log_screen.dart';
 import 'screens/trends_screen.dart';
 import 'services/mood_service.dart';
 import 'widgets/modern_nav_bar.dart';
+import 'widgets/side_drawer.dart';
 
 void main() {
   runApp(const SelfSyncApp());
@@ -45,20 +46,27 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
-  int _currentIndex = 1; // Start with Diary (center)
+  int _currentIndex = 1;
   late final MoodService _moodService;
-  DateTime? _targetDate; // Date to navigate to in diary
+  late final SideDrawerController _drawerController;
+  DateTime? _targetDate;
 
   @override
   void initState() {
     super.initState();
     _moodService = MoodService();
+    _drawerController = SideDrawerController();
+  }
+
+  @override
+  void dispose() {
+    _drawerController.dispose();
+    super.dispose();
   }
 
   void _onNavTap(int index) {
     setState(() {
       _currentIndex = index;
-      // Clear target date when manually navigating
       if (index != 1) {
         _targetDate = null;
       }
@@ -66,7 +74,6 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   void _handleNavigateToTab(int tabIndex, DateTime? date) {
-    print('🎯 MainScreen: Navigate to tab $tabIndex with date $date');
     setState(() {
       _currentIndex = tabIndex;
       _targetDate = date;
@@ -75,25 +82,33 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: [
-          CalendarScreen(moodService: _moodService),
-          MoodLogScreen(
-            moodService: _moodService,
-            initialDate: _targetDate,
-            key: _targetDate != null ? ValueKey(_targetDate) : null,
-          ),
-          TrendsScreen(
-            moodService: _moodService,
-            onNavigateToTab: _handleNavigateToTab,
-          ),
-        ],
-      ),
-      bottomNavigationBar: ModernNavBar(
-        currentIndex: _currentIndex,
-        onTap: _onNavTap,
+    return DrawerWrapper(
+      controller: _drawerController,
+      child: Scaffold(
+        body: IndexedStack(
+          index: _currentIndex,
+          children: [
+            CalendarScreen(
+              moodService: _moodService,
+              drawerController: _drawerController,
+            ),
+            MoodLogScreen(
+              moodService: _moodService,
+              initialDate: _targetDate,
+              drawerController: _drawerController,
+              key: _targetDate != null ? ValueKey(_targetDate) : null,
+            ),
+            TrendsScreen(
+              moodService: _moodService,
+              onNavigateToTab: _handleNavigateToTab,
+              drawerController: _drawerController,
+            ),
+          ],
+        ),
+        bottomNavigationBar: ModernNavBar(
+          currentIndex: _currentIndex,
+          onTap: _onNavTap,
+        ),
       ),
     );
   }

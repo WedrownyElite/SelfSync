@@ -2,15 +2,18 @@
 import 'package:intl/intl.dart';
 import '../models/mood_entry.dart';
 import '../services/mood_service.dart';
+import '../widgets/side_drawer.dart';
 
 class TrendsScreen extends StatefulWidget {
   final MoodService moodService;
   final Function(int tabIndex, DateTime? date)? onNavigateToTab;
+  final SideDrawerController drawerController;
 
   const TrendsScreen({
     super.key,
     required this.moodService,
     this.onNavigateToTab,
+    required this.drawerController,
   });
 
   @override
@@ -141,7 +144,11 @@ class _TrendsScreenState extends State<TrendsScreen> {
       ),
       child: Row(
         children: [
+          // ADD HAMBURGER BUTTON
+          HamburgerMenuButton(controller: widget.drawerController),
           const SizedBox(width: 12),
+
+          // EXISTING CODE BELOW
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
