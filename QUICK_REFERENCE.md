@@ -1,8 +1,8 @@
-﻿# VibeCheck - Quick Reference Card
+﻿# Self Sync - Quick Reference Card
 
 ## 🚀 Quick Start
 ```bash
-cd vibecheck
+cd selfsync
 flutter pub get
 flutter run
 ```

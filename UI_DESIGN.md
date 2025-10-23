@@ -1,8 +1,8 @@
-﻿# VibeCheck UI/UX Design Documentation
+﻿# Self Sync UI/UX Design Documentation
 
 ## Design Philosophy 🎨
 
-VibeCheck follows a **clean, modern, and innovative** design approach that prioritizes:
+Self Sync follows a **clean, modern, and innovative** design approach that prioritizes:
 - **Clarity**: Easy to understand at a glance
 - **Efficiency**: Quick to log moods and view insights
 - **Delight**: Smooth animations and thoughtful interactions

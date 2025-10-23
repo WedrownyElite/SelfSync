@@ -1,7 +1,7 @@
 ﻿# Security Policy
 
 ## 🔐 Supported Versions
-We actively maintain security updates for the latest stable version of **VibeCheck**.  
+We actively maintain security updates for the latest stable version of **Self Sync**.  
 Older versions may receive fixes at our discretion, but only the most recent release is guaranteed support.
 
 | Version | Supported |
@@ -11,7 +11,7 @@ Older versions may receive fixes at our discretion, but only the most recent rel
 ---
 
 ## 🛡️ Reporting a Vulnerability
-We take security seriously and appreciate your help in keeping VibeCheck safe for all users.
+We take security seriously and appreciate your help in keeping Self Sync safe for all users.
 
 - **Please do not publicly disclose vulnerabilities** until we have confirmed and patched the issue.
 - To report a vulnerability, email: **`support@oddologyinc.com`**
@@ -36,5 +36,5 @@ If the vulnerability is not accepted, we will explain why.
 ---
 
 ## 🙏 Thank You
-Responsible disclosure helps us keep VibeCheck secure and trusted.  
+Responsible disclosure helps us keep Self Sync secure and trusted.  
 We greatly appreciate the time and effort from the community in identifying and responsibly reporting issues.  

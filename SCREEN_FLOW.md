@@ -1,4 +1,4 @@
-﻿# VibeCheck Screen Flow
+﻿# Self Sync Screen Flow
 
 ## Navigation Structure 🗺️
 
@@ -21,7 +21,7 @@ Home Screen
 ```
 ┌─────────────────────────────┐
 │                             │
-│  VibeCheck 💜               │
+│  Self Sync 💜               │
 │  Track your mood...         │
 │                             │
 │                             │

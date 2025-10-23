@@ -1,4 +1,4 @@
-﻿# VibeCheck - Project Summary
+﻿# Self Sync - Project Summary
 
 ## What I've Built 🎉
 
@@ -14,7 +14,7 @@ A complete, production-ready Flutter mood tracking application with:
 ## Project Structure 📦
 
 ```
-vibecheck/
+selfsync/
 ├── lib/
 │   ├── main.dart                    # Entry point, theme, navigation
 │   ├── models/
@@ -36,7 +36,7 @@ vibecheck/
 │   └── PROJECT_SUMMARY.md           # This file
 │
 ├── pubspec.yaml                     # Dependencies (intl for dates)
-├── LICENSE                          # VibeCheck License
+├── LICENSE                          # Self Sync License
 ├── CONTRIBUTING.md                  # Contribution guidelines
 └── SECURITY.md                      # Security policy
 ```
@@ -266,7 +266,7 @@ To remove:
 
 ### Quick Start (5 minutes)
 ```bash
-cd vibecheck
+cd selfsync
 flutter pub get
 flutter run
 ```

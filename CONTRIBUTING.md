@@ -1,6 +1,6 @@
-﻿# Contributing to VibeCheck
+﻿# Contributing to Self Sync
 
-🎉 Thanks for considering contributing to **VibeCheck**!  
+🎉 Thanks for considering contributing to **Self Sync**!  
 We welcome contributions from everyone—whether it’s code, bug reports, documentation, design, or feature ideas.  
 This guide will help you get started.
 
@@ -21,7 +21,7 @@ This guide will help you get started.
 ---
 
 ## 🙌 Ways to Contribute
-You can help improve VibeCheck in many ways:
+You can help improve Self Sync in many ways:
 - **Report bugs** in [🐛 Bug Reports](../../discussions/categories/1-bug-reports-community).
 - **Suggest features** in [💡 Ideas](../../discussions/categories/4-ideas).
 - **Answer questions** or share tips in [❓ Q&A](../../discussions/categories/5-q-a).
@@ -34,8 +34,8 @@ You can help improve VibeCheck in many ways:
 ## 🛠 Development Setup
 1. Fork and clone the repo.
 ```bash
-git clone https://github.com/wedrownyelite/VibeCheck.git
-cd VibeCheck
+git clone https://github.com/wedrownyelite/SelfSync.git
+cd SelfSync
 ```
 3. Install [Flutter](https://flutter.dev/docs/get-started/install) if not already installed
 4. Run the app in debug mode:
@@ -59,10 +59,10 @@ When reporting a bug, please include:
 ---
 
 ## 💡 Suggesting Features
-Have an idea for VibeCheck? Awesome!
-- Check if it already exists in [Ideas](https://github.com/WedrownyElite/VibeCheck/discussions/categories/ideas)
+Have an idea for Self Sync? Awesome!
+- Check if it already exists in [Ideas](https://github.com/WedrownyElite/Self Sync/discussions/categories/ideas)
 - Describe the problem your ideas solves
-- Explain why it improves VibeCheck
+- Explain why it improves Self Sync
 - Include sketches, mockups, or examples if possible.
 
 ---
@@ -89,22 +89,22 @@ git checkout -b feature/your-feature-name
 
 ## 🤝 Code of Conduct
 We are committed to a welcoming and inclusive environment.
-By participating, you agree to our [Code of Conduct](https://github.com/WedrownyElite/VibeCheck/blob/C%2B%2B/CODE_OF_CONDUCT.md))
+By participating, you agree to our [Code of Conduct](https://github.com/WedrownyElite/SelfSync/blob/C%2B%2B/CODE_OF_CONDUCT.md))
 
 ---
 
 ## ⚖ License
-By submitting a contribution to VibeCheck, you agree that:
-- Your contribution will be included under the same license as the rest of VibeCheck (the [VibeCheck License](LICENSE)).
-- You retain authorship of your work, but for VibeCheck’s purposes it must follow the same rules (non-commercial, attribution required, no rebranding).
+By submitting a contribution to Self Sync, you agree that:
+- Your contribution will be included under the same license as the rest of Self Sync (the [Self Sync License](LICENSE)).
+- You retain authorship of your work, but for Self Sync’s purposes it must follow the same rules (non-commercial, attribution required, no rebranding).
 - This ensures all contributions remain compatible and protect both contributors and the project.
 
 ---
 
 ## 🌐 Community & Support
-- [📢 Announcements](https://github.com/WedrownyElite/VibeCheck/discussions/categories/announcements) - Stay updated on releases.
-- [❓ Q&A](https://github.com/WedrownyElite/VibeCheck/discussions/categories/q-a)
-- [🧪 Testing / Beta Feedback](https://github.com/WedrownyElite/VibeCheck/discussions/categories/testing-beta-feedback)
+- [📢 Announcements](https://github.com/WedrownyElite/Self Sync/discussions/categories/announcements) - Stay updated on releases.
+- [❓ Q&A](https://github.com/WedrownyElite/Self Sync/discussions/categories/q-a)
+- [🧪 Testing / Beta Feedback](https://github.com/WedrownyElite/Self Sync/discussions/categories/testing-beta-feedback)
 
 ---
 
@@ -117,4 +117,4 @@ All contributions will be acknowleged in:
 
 ---
 
-💜 Thank you for helping build **VibeCheck**! Together, we're making mood tracking more insightful and accessible.
+💜 Thank you for helping build **Self Sync**! Together, we're making mood tracking more insightful and accessible.
