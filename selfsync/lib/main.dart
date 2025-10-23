@@ -6,16 +6,16 @@ import 'services/mood_service.dart';
 import 'widgets/modern_nav_bar.dart';
 
 void main() {
-  runApp(const VibeCheckApp());
+  runApp(const SelfSyncApp());
 }
 
-class VibeCheckApp extends StatelessWidget {
-  const VibeCheckApp({super.key});
+class SelfSyncApp extends StatelessWidget {
+  const SelfSyncApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'VibeCheck',
+      title: 'Self Sync',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(

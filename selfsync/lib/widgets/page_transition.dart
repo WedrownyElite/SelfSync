@@ -1,9 +1,4 @@
-﻿// ─────────────────────────────────────────────────────────────
-//  VibeCheck
-//  Copyright (c) 2025 OddologyInc. All rights reserved.
-// ─────────────────────────────────────────────────────────────
-
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 class SlidePageRoute extends PageRouteBuilder {
   final Widget page;

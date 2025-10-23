@@ -1,10 +1,4 @@
-﻿// lib/models/mood_entry.dart
-// ─────────────────────────────────────────────────────────────
-//  VibeCheck
-//  Copyright (c) 2025 OddologyInc. All rights reserved.
-// ─────────────────────────────────────────────────────────────
-
-class MoodEntry {
+﻿class MoodEntry {
   final String id;
   final String message;
   final int moodRating; // 1-10

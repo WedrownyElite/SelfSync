@@ -1,4 +1,4 @@
-package com.example.selfsync
+package com.oddologyinc.selfsync
 
 import io.flutter.embedding.android.FlutterActivity
 
