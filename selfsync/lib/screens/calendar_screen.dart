@@ -277,143 +277,11 @@ class _CalendarScreenState extends State<CalendarScreen>
     );
   }
 
-  Widget _buildDayHeader(ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: const Row(
-        children: [
-          Expanded(child: _DayLabel('M')),
-          Expanded(child: _DayLabel('T')),
-          Expanded(child: _DayLabel('W')),
-          Expanded(child: _DayLabel('T')),
-          Expanded(child: _DayLabel('F')),
-          Expanded(child: _DayLabel('S')),
-          Expanded(child: _DayLabel('S')),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildModeSelector(ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 20,
-            offset: const Offset(0, -4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _buildModeButton(
-              icon: Icons.stop_rounded,
-              label: 'Solid',
-              mode: DisplayMode.solid,
-              theme: theme,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _buildModeButton(
-              icon: Icons.circle_outlined,
-              label: 'Circle',
-              mode: DisplayMode.circle,
-              theme: theme,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _buildModeButton(
-              icon: Icons.gradient_rounded,
-              label: 'Gradient',
-              mode: DisplayMode.gradient,
-              theme: theme,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildModeButton({
-    required IconData icon,
-    required String label,
-    required DisplayMode mode,
-    required ThemeData theme,
-  }) {
-    final isSelected = _displayMode == mode;
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () {
-          setState(() {
-            _displayMode = mode;
-          });
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? theme.colorScheme.primary.withValues(alpha: 0.15)
-                : Colors.grey[100],
-            borderRadius: BorderRadius.circular(12),
-            border: isSelected
-                ? Border.all(
-              color: theme.colorScheme.primary,
-              width: 2,
-            )
-                : null,
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 18,
-                color:
-                isSelected ? theme.colorScheme.primary : Colors.grey[600],
-              ),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                  color:
-                  isSelected ? theme.colorScheme.primary : Colors.grey[600],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildHeader(BuildContext context, ThemeData theme) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.colorScheme.surface,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.05),
@@ -424,25 +292,22 @@ class _CalendarScreenState extends State<CalendarScreen>
       ),
       child: Row(
         children: [
-          // ADD HAMBURGER BUTTON
           HamburgerMenuButton(controller: widget.drawerController),
           const SizedBox(width: 12),
-
-          // EXISTING CODE BELOW
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Calendar',
+                  'Mood Calendar',
                   style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 Text(
-                  'Year $currentYear',
+                  'Your year at a glance',
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: Colors.grey[600],
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                   ),
                 ),
               ],
@@ -452,30 +317,134 @@ class _CalendarScreenState extends State<CalendarScreen>
       ),
     );
   }
-}
 
-// Const widget for day labels
-class _DayLabel extends StatelessWidget {
-  final String day;
+  Widget _buildDayHeader(ThemeData theme) {
+    const days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
-  const _DayLabel(this.day);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.1),
+            width: 1,
+          ),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: days.map((day) {
+          return Expanded(
+            child: Center(
+              child: Text(
+                day,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
 
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Text(
-        day,
-        style: TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          color: Colors.grey[700],
+  Widget _buildModeSelector(ThemeData theme) {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 10,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          _buildModeButton(
+            theme,
+            'Solid',
+            Icons.circle,
+            DisplayMode.solid,
+          ),
+          _buildModeButton(
+            theme,
+            'Circle',
+            Icons.circle_outlined,
+            DisplayMode.circle,
+          ),
+          _buildModeButton(
+            theme,
+            'Gradient',
+            Icons.gradient_rounded,
+            DisplayMode.gradient,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModeButton(
+      ThemeData theme,
+      String label,
+      IconData icon,
+      DisplayMode mode,
+      ) {
+    final isSelected = _displayMode == mode;
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          setState(() {
+            _displayMode = mode;
+          });
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? theme.colorScheme.primary.withValues(alpha: 0.1)
+                : theme.colorScheme.surface,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 20,
+                color: isSelected
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                  color: isSelected
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-// Pre-calculated month data
+// Month data container
 class _MonthData {
   final int month;
   final int year;
@@ -492,13 +461,13 @@ class _MonthData {
   });
 }
 
-// Cached mood data per day
+// Day mood data container
 class _DayMoodData {
   final DateTime date;
   final List<MoodEntry> entries;
   double averageMood = 0;
   String emoji = '';
-  Color solidColor = Colors.grey;
+  Color solidColor = Colors.transparent;
   List<Color> gradientColors = [];
 
   _DayMoodData({
@@ -507,7 +476,7 @@ class _DayMoodData {
   });
 }
 
-// Optimized month section widget
+// Month section widget
 class _MonthSection extends StatelessWidget {
   final _MonthData monthData;
   final _DayMoodData? Function(DateTime) getMoodData;
@@ -526,48 +495,34 @@ class _MonthSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Month header
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text(
-              monthData.monthName,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: theme.colorScheme.primary,
-              ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Month name
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+          child: Text(
+            monthData.monthName,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: theme.colorScheme.primary,
             ),
           ),
+        ),
 
-          // Calendar grid
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: _CalendarGrid(
-              monthData: monthData,
-              getMoodData: getMoodData,
-              theme: theme,
-              displayMode: displayMode,
-              onDateTap: onDateTap,
-            ),
+        // Calendar grid
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: _CalendarGrid(
+            monthData: monthData,
+            getMoodData: getMoodData,
+            theme: theme,
+            displayMode: displayMode,
+            onDateTap: onDateTap,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -698,8 +653,14 @@ class _DayCell extends StatelessWidget {
   }
 
   Widget _buildSolidMode(bool hasEntry) {
-    final moodColor = hasEntry ? moodData!.solidColor : const Color(0xFFF5F5F5);
+    final isDark = theme.brightness == Brightness.dark;
+    final moodColor = hasEntry
+        ? moodData!.solidColor
+        : (isDark ? theme.colorScheme.surface : const Color(0xFFF5F5F5));
     final moodEmoji = hasEntry ? moodData!.emoji : '';
+    final textColor = hasEntry
+        ? (isDark ? Colors.white : Colors.grey[800]!)
+        : theme.colorScheme.onSurface.withValues(alpha: 0.3);
 
     return Container(
       width: double.infinity,
@@ -722,7 +683,7 @@ class _DayCell extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: isToday ? FontWeight.bold : FontWeight.w600,
-              color: hasEntry ? Colors.grey[800] : Colors.grey[400],
+              color: textColor,
             ),
           ),
           if (hasEntry) ...[
@@ -738,8 +699,15 @@ class _DayCell extends StatelessWidget {
   }
 
   Widget _buildCircleMode(bool hasEntry) {
-    final borderColor =
-    hasEntry ? moodData!.solidColor.withValues(alpha: 1.0) : const Color(0xFFE0E0E0);
+    final isDark = theme.brightness == Brightness.dark;
+    final borderColor = hasEntry
+        ? moodData!.solidColor.withValues(alpha: 1.0)
+        : (isDark
+        ? theme.colorScheme.onSurface.withValues(alpha: 0.2)
+        : const Color(0xFFE0E0E0));
+    final textColor = hasEntry
+        ? (isDark ? Colors.white : Colors.grey[800]!)
+        : theme.colorScheme.onSurface.withValues(alpha: 0.3);
 
     return Container(
       width: double.infinity,
@@ -760,7 +728,7 @@ class _DayCell extends StatelessWidget {
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.bold,
-            color: hasEntry ? Colors.grey[800] : Colors.grey[400],
+            color: textColor,
           ),
         ),
       ),
@@ -768,10 +736,16 @@ class _DayCell extends StatelessWidget {
   }
 
   Widget _buildGradientMode(bool hasEntry) {
+    final isDark = theme.brightness == Brightness.dark;
     final gradientColors = hasEntry
         ? moodData!.gradientColors
-        : const [Color(0xFFEEEEEE), Color(0xFFE0E0E0)];
+        : (isDark
+        ? [theme.colorScheme.surface, theme.colorScheme.surface]
+        : const [Color(0xFFEEEEEE), Color(0xFFE0E0E0)]);
     final moodEmoji = hasEntry ? moodData!.emoji : '';
+    final textColor = hasEntry
+        ? Colors.white
+        : theme.colorScheme.onSurface.withValues(alpha: 0.3);
 
     return Container(
       width: double.infinity,
@@ -807,7 +781,7 @@ class _DayCell extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: isToday ? FontWeight.bold : FontWeight.w600,
-              color: hasEntry ? Colors.white : Colors.grey[500],
+              color: textColor,
             ),
           ),
           if (hasEntry) ...[

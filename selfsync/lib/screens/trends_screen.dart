@@ -97,7 +97,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
     final hasAnyData = widget.moodService.entries.isNotEmpty;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA), // Match app theme background
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: Column(
           children: [
@@ -141,7 +141,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.colorScheme.surface,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.05),
@@ -170,7 +170,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
                 Text(
                   'Understand your patterns',
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: Colors.grey[600],
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                   ),
                 ),
               ],
@@ -212,7 +212,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
               'Start logging your moods to see\nyour trends and insights here',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: Colors.grey[600],
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
               ),
             ),
           ],
@@ -252,7 +252,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
               'Try selecting a different time range\nor log more moods',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: Colors.grey[600],
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
               ),
             ),
           ],
@@ -267,7 +267,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: Colors.grey[100],
+        color: theme.colorScheme.surface.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -287,7 +287,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
                 duration: const Duration(milliseconds: 200),
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 decoration: BoxDecoration(
-                  color: isSelected ? Colors.white : Colors.transparent,
+                  color: isSelected ? theme.colorScheme.surface : Colors.transparent,
                   borderRadius: BorderRadius.circular(8),
                   boxShadow: isSelected
                       ? [
@@ -307,7 +307,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
                     fontWeight: FontWeight.w600,
                     color: isSelected
                         ? theme.colorScheme.primary
-                        : Colors.grey[600],
+                        : theme.colorScheme.onSurface.withValues(alpha: 0.6),
                   ),
                 ),
               ),
@@ -398,7 +398,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: theme.colorScheme.surface,
             borderRadius: BorderRadius.circular(16),
             border: isInteractive ? Border.all(
               color: theme.colorScheme.primary.withValues(alpha: 0.2),
@@ -449,7 +449,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
                 label,
                 style: TextStyle(
                   fontSize: 12,
-                  color: Colors.grey[600],
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -520,7 +520,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
@@ -558,7 +558,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
                     : 'Daily Average',
                 style: TextStyle(
                   fontSize: 11,
-                  color: Colors.grey[600],
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -657,7 +657,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
       label,
       style: TextStyle(
         fontSize: 10,
-        color: Colors.grey[600],
+        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
         fontWeight: FontWeight.w500,
       ),
     );
@@ -679,7 +679,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
             DateFormat('MMM d').format(date),
             style: TextStyle(
               fontSize: 10,
-              color: Colors.grey[600],
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
             ),
             textAlign: index == 0
                 ? TextAlign.start
@@ -759,7 +759,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
@@ -830,7 +830,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
-                      color: Colors.grey[800],
+                      color: theme.colorScheme.onSurface,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -845,7 +845,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
-                              color: Colors.grey[600],
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                             ),
                           ),
                         ),
@@ -870,9 +870,17 @@ class _TrendsScreenState extends State<TrendsScreen> {
                           }
 
                           final count = dailyCounts[date] ?? 0;
+                          final isDark = theme.brightness == Brightness.dark;
                           Color boxColor;
+                          Color? borderColor;
                           if (count == 0) {
-                            boxColor = Colors.grey[200]!;
+                            // Empty boxes: light fill with strong border for definition
+                            boxColor = isDark
+                                ? theme.colorScheme.onSurface.withValues(alpha: 0.08)
+                                : Colors.grey[200]!;
+                            borderColor = isDark
+                                ? theme.colorScheme.onSurface.withValues(alpha: 0.3)
+                                : Colors.grey[400];
                           } else if (count == 1) {
                             boxColor = theme.colorScheme.primary.withValues(alpha: 0.3);
                           } else if (count == 2) {
@@ -893,10 +901,14 @@ class _TrendsScreenState extends State<TrendsScreen> {
                                 decoration: BoxDecoration(
                                   color: boxColor,
                                   borderRadius: BorderRadius.circular(8),
-                                  border: isToday ? Border.all(
+                                  border: isToday
+                                      ? Border.all(
                                     color: theme.colorScheme.primary,
                                     width: 2,
-                                  ) : null,
+                                  )
+                                      : borderColor != null
+                                      ? Border.all(color: borderColor, width: 1)
+                                      : null,
                                 ),
                                 child: Center(
                                   child: Text(
@@ -904,7 +916,9 @@ class _TrendsScreenState extends State<TrendsScreen> {
                                     style: TextStyle(
                                       fontSize: 14,
                                       fontWeight: isToday ? FontWeight.bold : FontWeight.w600,
-                                      color: count > 0 ? Colors.white : Colors.grey[700],
+                                      color: count > 0
+                                          ? Colors.white
+                                          : theme.colorScheme.onSurface.withValues(alpha: 0.6),
                                     ),
                                   ),
                                 ),
@@ -928,7 +942,12 @@ class _TrendsScreenState extends State<TrendsScreen> {
                 style: TextStyle(fontSize: 10, color: Colors.grey[600]),
               ),
               const SizedBox(width: 6),
-              _buildLegendBox(Colors.grey[200]!),
+              _buildLegendBox(
+                Colors.transparent,
+                borderColor: theme.brightness == Brightness.dark
+                    ? theme.colorScheme.onSurface.withValues(alpha: 0.2)
+                    : Colors.grey[300],
+              ),
               _buildLegendBox(theme.colorScheme.primary.withValues(alpha: 0.3)),
               _buildLegendBox(theme.colorScheme.primary.withValues(alpha: 0.6)),
               _buildLegendBox(theme.colorScheme.primary),
@@ -976,7 +995,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
@@ -1045,7 +1064,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
                       style: TextStyle(
                         fontSize: 9,
                         fontWeight: FontWeight.w500,
-                        color: Colors.grey[600],
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                       ),
                       textAlign: TextAlign.right,
                     ),
@@ -1069,9 +1088,17 @@ class _TrendsScreenState extends State<TrendsScreen> {
                     final cellDate = DateTime(month.year, month.month, dayNumber);
                     final count = dailyCounts[cellDate] ?? 0;
 
+                    final isDark = theme.brightness == Brightness.dark;
                     Color boxColor;
+                    Color? borderColor;
                     if (count == 0) {
-                      boxColor = Colors.grey[200]!;
+                      // Empty boxes: light fill with strong border for definition
+                      boxColor = isDark
+                          ? theme.colorScheme.onSurface.withValues(alpha: 0.08)
+                          : Colors.grey[200]!;
+                      borderColor = isDark
+                          ? theme.colorScheme.onSurface.withValues(alpha: 0.3)
+                          : Colors.grey[400];
                     } else if (count == 1) {
                       boxColor = theme.colorScheme.primary.withValues(alpha: 0.3);
                     } else if (count == 2) {
@@ -1087,6 +1114,9 @@ class _TrendsScreenState extends State<TrendsScreen> {
                         decoration: BoxDecoration(
                           color: boxColor,
                           borderRadius: BorderRadius.circular(2),
+                          border: borderColor != null
+                              ? Border.all(color: borderColor, width: 1)
+                              : null,
                         ),
                       ),
                     );
@@ -1104,7 +1134,14 @@ class _TrendsScreenState extends State<TrendsScreen> {
                 style: TextStyle(fontSize: 10, color: Colors.grey[600]),
               ),
               const SizedBox(width: 6),
-              _buildLegendBox(Colors.grey[200]!),
+              _buildLegendBox(
+                theme.brightness == Brightness.dark
+                    ? theme.colorScheme.onSurface.withValues(alpha: 0.08)
+                    : Colors.grey[200]!,
+                borderColor: theme.brightness == Brightness.dark
+                    ? theme.colorScheme.onSurface.withValues(alpha: 0.3)
+                    : Colors.grey[400],
+              ),
               _buildLegendBox(theme.colorScheme.primary.withValues(alpha: 0.3)),
               _buildLegendBox(theme.colorScheme.primary.withValues(alpha: 0.6)),
               _buildLegendBox(theme.colorScheme.primary),
@@ -1120,7 +1157,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
     );
   }
 
-  Widget _buildLegendBox(Color color) {
+  Widget _buildLegendBox(Color color, {Color? borderColor}) {
     return Container(
       width: 12,
       height: 12,
@@ -1128,6 +1165,9 @@ class _TrendsScreenState extends State<TrendsScreen> {
       decoration: BoxDecoration(
         color: color,
         borderRadius: BorderRadius.circular(2),
+        border: borderColor != null
+            ? Border.all(color: borderColor, width: 0.5)
+            : null,
       ),
     );
   }
@@ -1165,7 +1205,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
@@ -1232,7 +1272,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
                     child: LinearProgressIndicator(
                       value: entry.value / total,
                       minHeight: 8,
-                      backgroundColor: Colors.grey[200],
+                      backgroundColor: theme.scaffoldBackgroundColor,
                       valueColor: AlwaysStoppedAnimation<Color>(color),
                     ),
                   ),

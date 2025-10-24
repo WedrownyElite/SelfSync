@@ -315,7 +315,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
     final isViewingToday = _selectedStartDate == null && _selectedEndDate == null;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA), // Match app theme background
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: Stack(
           children: [
@@ -411,7 +411,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
                       width: size.width * 0.75,
                       height: 250,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: theme.colorScheme.surface,
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
@@ -556,7 +556,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white, // White surface to match app theme
+              color: theme.colorScheme.surface, // White surface to match app theme
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.05),
@@ -644,7 +644,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
         ),
         child: Container(
           decoration: BoxDecoration(
-            color: Colors.white, // White surface to match app theme
+            color: theme.colorScheme.surface, // White surface to match app theme
             border: Border(
               bottom: BorderSide(
                 color: theme.dividerColor.withValues(alpha: 0.1),
@@ -1155,7 +1155,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.white, // White message bubbles as per design
+                      color: theme.colorScheme.surface, // White message bubbles as per design
                       borderRadius: const BorderRadius.only(
                         topRight: Radius.circular(16),
                         bottomLeft: Radius.circular(16),
@@ -1264,7 +1264,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white, // White surface to match app theme
+          color: theme.colorScheme.surface, // White surface to match app theme
           border: Border(
             top: BorderSide(
               color: theme.dividerColor.withValues(alpha: 0.1),
@@ -1404,7 +1404,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
                   child: IconButton(
                     onPressed: _sendMessage,
                     icon: const Icon(Icons.send_rounded),
-                    color: Colors.white,
+                    color: theme.colorScheme.surface,
                   ),
                 ),
               ],

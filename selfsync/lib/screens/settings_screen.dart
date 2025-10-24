@@ -252,7 +252,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(width: 12),
               Text(
-                'Color Theme',
+                'Mood Colors',
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
@@ -261,7 +261,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Choose your mood color gradient',
+            'Choose your mood rating color palette',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
             ),
@@ -294,7 +294,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: isSelected
-                ? theme.colorScheme.primary.withValues(alpha: 0.1)
+                ? theme.colorScheme.primary.withValues(alpha: 0.05)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
@@ -306,56 +306,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           child: Row(
             children: [
-              // Gradient preview
+              // Gradient preview with mood colors
               Container(
                 width: 50,
                 height: 50,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [colors.primary, colors.secondary],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+                    colors: colors.moodGradient,
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
                   ),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(8),
                   boxShadow: [
                     BoxShadow(
                       color: colors.primary.withValues(alpha: 0.3),
                       blurRadius: 8,
-                      offset: const Offset(0, 4),
+                      offset: const Offset(0, 2),
                     ),
                   ],
                 ),
               ),
               const SizedBox(width: 16),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      colors.name,
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: isSelected
-                            ? theme.colorScheme.primary
-                            : theme.colorScheme.onSurface,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    // Mood gradient preview dots
-                    Row(
-                      children: colors.moodGradient.map((color) {
-                        return Container(
-                          width: 12,
-                          height: 12,
-                          margin: const EdgeInsets.only(right: 4),
-                          decoration: BoxDecoration(
-                            color: color,
-                            shape: BoxShape.circle,
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ],
+                child: Text(
+                  colors.name,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: isSelected
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurface,
+                  ),
                 ),
               ),
               if (isSelected)
