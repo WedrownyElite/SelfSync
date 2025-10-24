@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../models/mood_entry.dart';
 import '../services/mood_service.dart';
 import '../widgets/side_drawer.dart';
+import '../utils/app_logger.dart';
 
 class TrendsScreen extends StatefulWidget {
   final MoodService moodService;
@@ -28,19 +29,19 @@ class _TrendsScreenState extends State<TrendsScreen> {
     super.initState();
     // Listen to mood service changes
     widget.moodService.addListener(_onMoodServiceUpdate);
-    print('👂 TrendsScreen: Started listening to MoodService updates');
+    AppLogger.lifecycle('Started listening to MoodService updates', tag: 'TrendsScreen');
   }
 
   @override
   void dispose() {
     widget.moodService.removeListener(_onMoodServiceUpdate);
-    print('👋 TrendsScreen: Stopped listening to MoodService updates');
+    AppLogger.lifecycle('Stopped listening to MoodService updates', tag: 'TrendsScreen');
     super.dispose();
   }
 
   void _onMoodServiceUpdate() {
     if (mounted) {
-      print('🔔 TrendsScreen: MoodService update received, rebuilding...');
+      AppLogger.debug('MoodService update received, rebuilding UI', tag: 'TrendsScreen');
       setState(() {});
     }
   }
@@ -50,41 +51,48 @@ class _TrendsScreenState extends State<TrendsScreen> {
     final theme = Theme.of(context);
 
     // Debug logging
-    print('═══════════════════════════════════════════════════════');
-    print('🔍 TRENDS SCREEN DEBUG');
-    print('═══════════════════════════════════════════════════════');
-    print('📊 Total entries in service: ${widget.moodService.entries.length}');
-    print('📅 Selected range: $_selectedRange');
-    print('');
+    AppLogger.separator(label: 'TRENDS SCREEN DEBUG');
+    AppLogger.data('Total entries in service',
+        details: '${widget.moodService.entries.length}',
+        tag: 'TrendsScreen'
+    );
+    AppLogger.info('Selected range: $_selectedRange', tag: 'TrendsScreen');
 
     if (widget.moodService.entries.isNotEmpty) {
-      print('📝 Sample entries:');
+      AppLogger.info('Sample entries (first ${widget.moodService.entries.length.clamp(0, 5)}):',
+          tag: 'TrendsScreen'
+      );
+
       for (var i = 0; i < widget.moodService.entries.length.clamp(0, 5); i++) {
         final entry = widget.moodService.entries[i];
-        print('  Entry $i: ${entry.timestamp} - Mood: ${entry.moodRating}');
+        AppLogger.debug('Entry $i: ${entry.timestamp} - Mood: ${entry.moodRating}',
+            tag: 'TrendsScreen'
+        );
       }
-      print('');
 
       final oldest = widget.moodService.entries.last;
       final newest = widget.moodService.entries.first;
-      print('📆 Date range:');
-      print('  Oldest: ${oldest.timestamp}');
-      print('  Newest: ${newest.timestamp}');
-      print('');
+
+      AppLogger.prettyPrint({
+        'Oldest entry': oldest.timestamp.toString(),
+        'Newest entry': newest.timestamp.toString(),
+        'Date span': '${newest.timestamp.difference(oldest.timestamp).inDays} days',
+      }, title: 'Date Range', tag: 'TrendsScreen');
     }
 
     final entries = _getEntriesForRange(widget.moodService.entries, _selectedRange);
 
-    print('✅ Filtered entries: ${entries.length}');
-    if (entries.isNotEmpty && entries.length <= 5) {
-      print('   Filtered entry dates:');
-      for (var entry in entries) {
-        print('   - ${entry.timestamp}');
-      }
-    }
-    print('═══════════════════════════════════════════════════════');
-    print('');
+    AppLogger.success('Filtered entries: ${entries.length}', tag: 'TrendsScreen');
 
+    if (entries.isNotEmpty && entries.length <= 5) {
+      AppLogger.list(
+          'Filtered entry dates',
+          entries.map((e) => e.timestamp.toString()).toList(),
+          tag: 'TrendsScreen'
+      );
+    }
+    AppLogger.separator();
+    
     // Always check the TOTAL entries, not just filtered
     final hasAnyData = widget.moodService.entries.isNotEmpty;
 
@@ -268,8 +276,11 @@ class _TrendsScreenState extends State<TrendsScreen> {
           return Expanded(
             child: GestureDetector(
               onTap: () {
-                print('');
-                print('🔄 Time range changed: $_selectedRange → $range');
+                // Use AppLogger instead of print
+                AppLogger.info(
+                    'Time range changed: $_selectedRange → $range',
+                    tag: 'TrendsScreen.Selector'
+                );
                 setState(() => _selectedRange = range);
               },
               child: AnimatedContainer(
@@ -368,9 +379,11 @@ class _TrendsScreenState extends State<TrendsScreen> {
   }
 
   void _navigateToDiary(DateTime date) {
-    print('📍 Navigating to diary for date: $date');
-    // Use callback to tell parent to switch to diary tab with this date
-    widget.onNavigateToTab?.call(1, date); // Index 1 is the diary screen
+    AppLogger.navigation(
+      'Trends Screen',
+      'Mood Diary (${date.toString().split(' ')[0]})',
+    );
+    widget.onNavigateToTab?.call(1, date);
   }
 
   Widget _buildStatCard(
@@ -1334,18 +1347,16 @@ class _TrendsScreenState extends State<TrendsScreen> {
 
   List<MoodEntry> _getEntriesForRange(
       List<MoodEntry> allEntries, String range) {
-    print('');
-    print('🔧 _getEntriesForRange called');
-    print('   Range: $range');
-    print('   All entries count: ${allEntries.length}');
+    AppLogger.debug('Filtering entries for range: $range', tag: 'TrendsScreen.Filter');
+    AppLogger.data('Input entries count', details: '${allEntries.length}', tag: 'TrendsScreen.Filter');
 
     if (allEntries.isEmpty) {
-      print('   ⚠️ No entries to filter!');
+      AppLogger.warning('No entries to filter!', tag: 'TrendsScreen.Filter');
       return [];
     }
 
     final now = DateTime.now();
-    print('   Current time: $now');
+    AppLogger.debug('Current time: $now', tag: 'TrendsScreen.Filter');
 
     DateTime cutoff;
 
@@ -1363,18 +1374,16 @@ class _TrendsScreenState extends State<TrendsScreen> {
         cutoff = now.subtract(const Duration(days: 365));
         break;
       case 'Lifetime':
-        print('   ✅ Lifetime selected - returning all ${allEntries.length} entries');
+        AppLogger.success('Lifetime selected - returning all ${allEntries.length} entries',
+            tag: 'TrendsScreen.Filter'
+        );
         return allEntries;
       default:
         cutoff = now.subtract(const Duration(days: 7));
     }
 
-    print('   Cutoff date/time: $cutoff');
-
-    // FIXED: Use isAfter with an inclusive comparison by comparing dates only
-    // AND ensure we're comparing at the start of the day
     final cutoffDate = DateTime(cutoff.year, cutoff.month, cutoff.day);
-    print('   Cutoff date (normalized): $cutoffDate');
+    AppLogger.info('Cutoff date (normalized): $cutoffDate', tag: 'TrendsScreen.Filter');
 
     final filtered = allEntries.where((e) {
       final entryDate = DateTime(e.timestamp.year, e.timestamp.month, e.timestamp.day);
@@ -1382,18 +1391,21 @@ class _TrendsScreenState extends State<TrendsScreen> {
       final isSameAsCutoff = entryDate.isAtSameMomentAs(cutoffDate);
       final included = isAfterCutoff || isSameAsCutoff;
 
-      if (allEntries.indexOf(e) < 3) { // Log first 3 for debugging
-        print('   Entry check: ${e.timestamp}');
-        print('     Entry date (normalized): $entryDate');
-        print('     Is after cutoff? $isAfterCutoff');
-        print('     Is same as cutoff? $isSameAsCutoff');
-        print('     Included? $included');
+      // Log first 3 entries for debugging
+      if (allEntries.indexOf(e) < 3) {
+        AppLogger.prettyPrint({
+          'Entry timestamp': e.timestamp.toString(),
+          'Entry date (normalized)': entryDate.toString(),
+          'Is after cutoff?': isAfterCutoff.toString(),
+          'Is same as cutoff?': isSameAsCutoff.toString(),
+          'Included?': included.toString(),
+        }, title: 'Entry Check ${allEntries.indexOf(e)}', tag: 'TrendsScreen.Filter');
       }
 
       return included;
     }).toList();
 
-    print('   ✅ Filtered to ${filtered.length} entries');
+    AppLogger.success('Filtered to ${filtered.length} entries', tag: 'TrendsScreen.Filter');
 
     return filtered;
   }

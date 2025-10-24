@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../models/mood_entry.dart';
 import '../services/mood_service.dart';
 import '../widgets/side_drawer.dart';
+import '../utils/app_logger.dart';
 
 class MoodLogScreen extends StatefulWidget {
   final MoodService moodService;
@@ -58,6 +59,8 @@ class _MoodLogScreenState extends State<MoodLogScreen>
   @override
   void initState() {
     super.initState();
+    AppLogger.lifecycle('MoodLogScreen initialized', tag: 'MoodLog');
+    
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 600),
       vsync: this,
@@ -85,9 +88,17 @@ class _MoodLogScreenState extends State<MoodLogScreen>
 
     // Calculate available months and years from mood data
     _calculateAvailableDates();
+    AppLogger.data('Available dates calculated',
+        details: '${_availableMonths.length} months, ${_availableYears.length} years',
+        tag: 'MoodLog'
+    );
 
     // If we have an initial date, scroll to it
     if (widget.initialDate != null) {
+      AppLogger.info(
+          'Opening with initial date: ${DateFormat('yyyy-MM-dd').format(widget.initialDate!)}',
+          tag: 'MoodLog'
+      );
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollToDate(widget.initialDate!);
       });
@@ -105,6 +116,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
     }
 
     widget.moodService.addListener(_onMoodServiceUpdate);
+    AppLogger.debug('Listening to MoodService updates', tag: 'MoodLog');
   }
 
   void _calculateAvailableDates() {
@@ -141,6 +153,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
 
   void _showMonthPicker() {
     HapticFeedback.lightImpact();
+    AppLogger.debug('Opening month picker', tag: 'MoodLog.Calendar');
     setState(() {
       _isMonthPickerVisible = true;
       _isYearPickerVisible = false;
@@ -151,6 +164,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
 
   void _showYearPicker() {
     HapticFeedback.lightImpact();
+    AppLogger.debug('Opening year picker', tag: 'MoodLog.Calendar');
     setState(() {
       _isYearPickerVisible = true;
       _isMonthPickerVisible = false;
@@ -160,6 +174,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
   }
 
   void _closePickers() {
+    AppLogger.debug('Closing date pickers', tag: 'MoodLog.Calendar');
     setState(() {
       _isMonthPickerVisible = false;
       _isYearPickerVisible = false;
@@ -170,6 +185,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
 
   @override
   void dispose() {
+    AppLogger.lifecycle('MoodLogScreen disposing', tag: 'MoodLog');
     _messageController.dispose();
     _scrollController.dispose();
     _fadeController.dispose();
@@ -184,36 +200,33 @@ class _MoodLogScreenState extends State<MoodLogScreen>
   }
 
   void _onMoodServiceUpdate() {
+    AppLogger.debug('MoodService update received, recalculating dates', tag: 'MoodLog');
     _calculateAvailableDates();
     if (mounted) setState(() {});
   }
 
   void _loadDateRange(DateTime? startDate, DateTime? endDate) {
-    // This will trigger a rebuild with the filtered date range
-    setState(() {
-      // The filtering happens in _buildMessageList
-    });
-
-    // If a specific date or range is selected, don't auto-scroll
-    if (startDate == null && endDate == null) {
-      // When clearing selection, scroll to bottom to show most recent
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scrollController.hasClients) {
-          _scrollController.animateTo(
-            _scrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOutCubic,
-          );
-        }
-      });
-    } else if (startDate != null && endDate == null) {
-      // Single date selected - scroll to that date
-      _scrollToDate(startDate);
+    // Log date range selection
+    if (startDate != null && endDate != null) {
+      AppLogger.data('Date range selected',
+          details: '${DateFormat('yyyy-MM-dd').format(startDate)} to ${DateFormat('yyyy-MM-dd').format(endDate)}',
+          tag: 'MoodLog.Calendar'
+      );
+    } else if (startDate != null) {
+      AppLogger.data('Single date selected',
+          details: DateFormat('yyyy-MM-dd').format(startDate),
+          tag: 'MoodLog.Calendar'
+      );
+    } else {
+      AppLogger.debug('Date selection cleared', tag: 'MoodLog.Calendar');
     }
-    // For range selection, just show the filtered results without scrolling
   }
 
   void _scrollToDate(DateTime date) {
+    AppLogger.debug(
+        'Scrolling to date: ${DateFormat('yyyy-MM-dd').format(date)}',
+        tag: 'MoodLog'
+    );
     _isJumpingToDate = true;
     final dateKey = DateFormat('yyyy-MM-dd').format(date);
 
@@ -233,8 +246,20 @@ class _MoodLogScreenState extends State<MoodLogScreen>
     _fadeController.forward();
   }
 
-  void _sendMessage() {
-    if (_messageController.text.trim().isEmpty) return;
+  void _sendMessage() async {
+    if (_messageController.text.trim().isEmpty) {
+      AppLogger.warning('Attempted to send empty message', tag: 'MoodLog');
+      return;
+    }
+
+    final message = _messageController.text.trim();
+    final rating = _currentMoodRating;
+
+    AppLogger.separator(label: 'MOOD ENTRY SUBMISSION');
+    AppLogger.data('Creating mood entry',
+        details: 'Rating: $rating/10, Message length: ${message.length} chars',
+        tag: 'MoodLog'
+    );
 
     widget.moodService.addEntry(
       _messageController.text.trim(),
