@@ -5,17 +5,20 @@ import '../models/mood_entry.dart';
 import '../services/mood_service.dart';
 import '../widgets/side_drawer.dart';
 import '../utils/app_logger.dart';
+import '../services/theme_service.dart';
 
 class MoodLogScreen extends StatefulWidget {
   final MoodService moodService;
   final DateTime? initialDate;
   final SideDrawerController drawerController;
+  final ThemeService themeService;
 
   const MoodLogScreen({
     super.key,
     required this.moodService,
     this.initialDate,
     required this.drawerController,
+    required this.themeService,
   });
 
   @override
@@ -284,11 +287,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
   }
 
   Color _getMoodColor(int rating) {
-    if (rating <= 2) return Colors.red;
-    if (rating <= 4) return Colors.orange;
-    if (rating <= 6) return Colors.amber;
-    if (rating <= 8) return const Color(0xFF8BC34A);
-    return Colors.green;
+    return getMoodColorFromRating(rating, widget.themeService.getMoodGradient());
   }
 
   Map<String, List<MoodEntry>> _groupEntriesByDate() {
@@ -1132,16 +1131,20 @@ class _MoodLogScreenState extends State<MoodLogScreen>
           children: [
             // Emoji avatar
             Container(
-              width: 40,
-              height: 40,
+              width: 48,
+              height: 48,
               decoration: BoxDecoration(
-                color: _getMoodColor(entry.moodRating).withValues(alpha: 0.2),
                 shape: BoxShape.circle,
+                color: getMoodColorFromRating(entry.moodRating, widget.themeService.getMoodGradient()).withValues(alpha: 0.2),
+                border: Border.all(
+                  color: getMoodColorFromRating(entry.moodRating, widget.themeService.getMoodGradient()),
+                  width: 2,
+                ),
               ),
               child: Center(
                 child: Text(
                   MoodEntry.getMoodEmoji(entry.moodRating),
-                  style: const TextStyle(fontSize: 20),
+                  style: const TextStyle(fontSize: 24),
                 ),
               ),
             ),

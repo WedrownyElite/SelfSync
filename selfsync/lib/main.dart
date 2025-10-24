@@ -182,17 +182,20 @@ class _MainScreenState extends State<MainScreen> {
           moodService: _moodService,
           onDateSelected: _onDateSelected,
           drawerController: _drawerController,
+          themeService: widget.themeService,
         );
       case 1:
         return MoodLogScreen(
           moodService: _moodService,
           initialDate: _targetDate,
           drawerController: _drawerController,
+          themeService: widget.themeService,
         );
       case 2:
         return TrendsScreen(
           moodService: _moodService,
           drawerController: _drawerController,
+          themeService: widget.themeService,
         );
       default:
         AppLogger.error('Invalid tab index: $_currentIndex',

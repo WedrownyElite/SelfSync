@@ -171,54 +171,54 @@ extension ColorGradientExtension on ColorGradientOption {
     switch (this) {
       case ColorGradientOption.purple:
         return GradientColors(
-          name: 'Purple Bliss',
+          name: 'Classic',
           primary: const Color(0xFF6C63FF),
           secondary: const Color(0xFFFF6B9D),
           moodGradient: [
-            const Color(0xFFFF6B9D), // Bad (Pink)
-            const Color(0xFFFF8A80), // Getting better
-            const Color(0xFFFFC107), // Okay (Amber)
-            const Color(0xFF8BC34A), // Good (Light Green)
-            const Color(0xFF6C63FF), // Excellent (Purple)
+            const Color(0xFFEF5350), // 1-2: Red (struggling)
+            const Color(0xFFFF7043), // 3-4: Red-Orange (low)
+            const Color(0xFFFDD835), // 5-6: Yellow (okay)
+            const Color(0xFF9CCC65), // 7-8: Light Green (good)
+            const Color(0xFF66BB6A), // 9-10: Green (excellent)
           ],
         );
       case ColorGradientOption.blue:
         return GradientColors(
-          name: 'Ocean Wave',
+          name: 'Ocean Depths',
           primary: const Color(0xFF2196F3),
           secondary: const Color(0xFF00BCD4),
           moodGradient: [
-            const Color(0xFFE91E63), // Bad (Pink)
-            const Color(0xFFFF6F00), // Getting better (Orange)
-            const Color(0xFFFFC107), // Okay (Amber)
-            const Color(0xFF00BCD4), // Good (Cyan)
-            const Color(0xFF2196F3), // Excellent (Blue)
+            const Color(0xFF1565C0), // 1-2: Deep Blue (struggling)
+            const Color(0xFF1976D2), // 3-4: Blue (low)
+            const Color(0xFF42A5F5), // 5-6: Light Blue (okay)
+            const Color(0xFF4DD0E1), // 7-8: Cyan (good)
+            const Color(0xFF80DEEA), // 9-10: Light Cyan (excellent)
           ],
         );
       case ColorGradientOption.teal:
         return GradientColors(
-          name: 'Forest Calm',
+          name: 'Forest Zen',
           primary: const Color(0xFF009688),
           secondary: const Color(0xFF4CAF50),
           moodGradient: [
-            const Color(0xFFE53935), // Bad (Red)
-            const Color(0xFFFF6F00), // Getting better (Orange)
-            const Color(0xFFFDD835), // Okay (Yellow)
-            const Color(0xFF4CAF50), // Good (Green)
-            const Color(0xFF009688), // Excellent (Teal)
+            const Color(0xFF5D4037), // 1-2: Brown (struggling)
+            const Color(0xFF795548), // 3-4: Light Brown (low)
+            const Color(0xFFAED581), // 5-6: Light Green (okay)
+            const Color(0xFF4CAF50), // 7-8: Green (good)
+            const Color(0xFF00897B), // 9-10: Teal (excellent)
           ],
         );
       case ColorGradientOption.orange:
         return GradientColors(
-          name: 'Sunset Glow',
+          name: 'Sunrise',
           primary: const Color(0xFFFF5722),
           secondary: const Color(0xFFFFB300),
           moodGradient: [
-            const Color(0xFFD32F2F), // Bad (Dark Red)
-            const Color(0xFFFF5722), // Getting better (Orange)
-            const Color(0xFFFFB300), // Okay (Amber)
-            const Color(0xFFFFD54F), // Good (Light Yellow)
-            const Color(0xFFFFF176), // Excellent (Bright Yellow)
+            const Color(0xFF8E24AA), // 1-2: Purple (struggling)
+            const Color(0xFFD81B60), // 3-4: Pink (low)
+            const Color(0xFFFF6F00), // 5-6: Orange (okay)
+            const Color(0xFFFFA726), // 7-8: Light Orange (good)
+            const Color(0xFFFFD54F), // 9-10: Yellow (excellent)
           ],
         );
       case ColorGradientOption.pink:
@@ -227,15 +227,39 @@ extension ColorGradientExtension on ColorGradientOption {
           primary: const Color(0xFFE91E63),
           secondary: const Color(0xFFAB47BC),
           moodGradient: [
-            const Color(0xFFC62828), // Bad (Dark Red)
-            const Color(0xFFE91E63), // Getting better (Pink)
-            const Color(0xFFEC407A), // Okay (Light Pink)
-            const Color(0xFFAB47BC), // Good (Purple)
-            const Color(0xFFBA68C8), // Excellent (Light Purple)
+            const Color(0xFF6A1B9A), // 1-2: Deep Purple (struggling)
+            const Color(0xFF8E24AA), // 3-4: Purple (low)
+            const Color(0xFFAB47BC), // 5-6: Light Purple (okay)
+            const Color(0xFFEC407A), // 7-8: Pink (good)
+            const Color(0xFFF48FB1), // 9-10: Light Pink (excellent)
           ],
         );
     }
   }
+}
+
+/// Get mood color from gradient based on rating (1-10)
+Color getMoodColorFromRating(int rating, List<Color> gradient) {
+  rating = rating.clamp(1, 10);
+
+  if (rating <= 2) return gradient[0];
+  if (rating <= 4) return gradient[1];
+  if (rating <= 6) return gradient[2];
+  if (rating <= 8) return gradient[3];
+  return gradient[4];
+}
+
+/// Get interpolated mood color for precise rating (supports decimals)
+Color getMoodColorInterpolated(double rating, List<Color> gradient) {
+  rating = rating.clamp(1.0, 10.0);
+
+  final normalized = (rating - 1.0) / 9.0;
+  final position = normalized * (gradient.length - 1);
+  final index = position.floor();
+  final nextIndex = (index + 1).clamp(0, gradient.length - 1);
+  final t = position - index;
+
+  return Color.lerp(gradient[index], gradient[nextIndex], t)!;
 }
 
 /// Container for gradient color scheme

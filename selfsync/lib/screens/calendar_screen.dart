@@ -3,10 +3,16 @@ import '../services/mood_service.dart';
 import '../models/mood_entry.dart';
 import 'package:intl/intl.dart';
 import '../widgets/side_drawer.dart';
+import '../services/theme_service.dart';
 
 enum DisplayMode {
-  solid,
+  normal,
   circle,
+  condensed,
+}
+
+enum ColorStyle {
+  solid,
   gradient,
 }
 
@@ -14,12 +20,14 @@ class CalendarScreen extends StatefulWidget {
   final MoodService moodService;
   final Function(DateTime)? onDateSelected;
   final SideDrawerController drawerController;
+  final ThemeService themeService;
 
   const CalendarScreen({
     super.key,
     required this.moodService,
     this.onDateSelected,
     required this.drawerController,
+    required this.themeService,
   });
 
   @override
@@ -36,7 +44,9 @@ class _CalendarScreenState extends State<CalendarScreen>
   bool _needsRebuild = false;
 
   // Display mode
-  DisplayMode _displayMode = DisplayMode.solid;
+  DisplayMode _displayMode = DisplayMode.normal;
+  ColorStyle _colorStyle = ColorStyle.solid;
+  bool _isModePickerExpanded = false;
 
   // Pre-calculated month data
   late List<_MonthData> _monthsData;
@@ -67,6 +77,7 @@ class _CalendarScreenState extends State<CalendarScreen>
 
     _buildMoodCache();
     widget.moodService.addListener(_onMoodServiceUpdate);
+    widget.themeService.addListener(_onThemeChanged);
 
     // Scroll to position after build
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -82,6 +93,7 @@ class _CalendarScreenState extends State<CalendarScreen>
     _scrollController.removeListener(_saveScrollPosition);
     _scrollController.dispose();
     widget.moodService.removeListener(_onMoodServiceUpdate);
+    widget.themeService.removeListener(_onThemeChanged);
     super.dispose();
   }
 
@@ -110,22 +122,40 @@ class _CalendarScreenState extends State<CalendarScreen>
 
     final currentMonth = DateTime.now().month;
 
-    // Calculate approximate position for current month
-    // Each month card is roughly 380px (including margin)
-    // Add header heights: main header (72px) + day header (48px) + top padding (16px) = 136px
-    final monthCardHeight = 380.0;
-    final headerHeight = 136.0;
-    final targetPosition = (currentMonth - 1) * monthCardHeight - headerHeight;
+    // Wait a bit longer for layout to complete and get accurate measurements
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
 
-    // Ensure we don't scroll past the end
-    final maxScroll = _scrollController.position.maxScrollExtent;
-    final scrollTo = targetPosition.clamp(0.0, maxScroll);
+      // Calculate more accurate position
+      // Month header: ~16 (top padding) + ~20 (title height) + ~12 (bottom padding) = ~48px
+      // Calendar grid varies by weeks in month (typically 4-6 weeks)
+      // Week row: ~40px (cell height) + ~8px (bottom padding) = ~48px per week
+      // Month bottom margin: ~16px
+      // Total per month: ~48 (header) + (weeks * 48) + 16 ≈ 64 + (weeks * 48)
 
-    _scrollController.animateTo(
-      scrollTo,
-      duration: const Duration(milliseconds: 800),
-      curve: Curves.easeInOutCubic,
-    );
+      double totalHeight = 0;
+
+      // Calculate height for all months before current month
+      for (int i = 0; i < currentMonth - 1; i++) {
+        final monthData = _monthsData[i];
+        final totalDays = monthData.startingWeekday + monthData.days.length;
+        final weeks = (totalDays / 7).ceil();
+
+        // Month header + (weeks * row height) + bottom margin
+        final monthHeight = 48 + (weeks * 48) + 16;
+        totalHeight += monthHeight;
+      }
+
+      // Scroll to position, ensuring we don't go past max
+      final maxScroll = _scrollController.position.maxScrollExtent;
+      final targetScroll = (totalHeight - 50).clamp(0.0, maxScroll); // -50 to show a bit of previous month
+
+      _scrollController.animateTo(
+        targetScroll,
+        duration: const Duration(milliseconds: 800),
+        curve: Curves.easeInOutCubic,
+      );
+    });
   }
 
   List<DateTime> _getDaysInMonth(int year, int month) {
@@ -157,6 +187,16 @@ class _CalendarScreenState extends State<CalendarScreen>
         }
       }
     });
+  }
+
+  void _onThemeChanged() {
+    if (!mounted) return;
+
+    // Rebuild mood cache with new colors from the new gradient
+    _buildMoodCache();
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _buildMoodCache() {
@@ -193,25 +233,18 @@ class _CalendarScreenState extends State<CalendarScreen>
   }
 
   Color _getMoodColorForAverage(double avgMood) {
-    if (avgMood <= 2) return const Color(0x59F44336);
-    if (avgMood <= 4) return const Color(0x59FF9800);
-    if (avgMood <= 6) return const Color(0x59FFC107);
-    if (avgMood <= 8) return const Color(0x598BC34A);
-    return const Color(0x594CAF50);
+    return getMoodColorInterpolated(avgMood, widget.themeService.getMoodGradient())
+        .withValues(alpha: 0.35);
   }
 
   List<Color> _getMoodGradientForAverage(double avgMood) {
-    if (avgMood <= 2) {
-      return const [Color(0xFFFF6B6B), Color(0xFFEE5A6F)];
-    } else if (avgMood <= 4) {
-      return const [Color(0xFFFFA726), Color(0xFFFB8C00)];
-    } else if (avgMood <= 6) {
-      return const [Color(0xFFFFCA28), Color(0xFFFFA000)];
-    } else if (avgMood <= 8) {
-      return const [Color(0xFF9CCC65), Color(0xFF7CB342)];
-    } else {
-      return const [Color(0xFF66BB6A), Color(0xFF43A047)];
-    }
+    final baseColor =
+    getMoodColorInterpolated(avgMood, widget.themeService.getMoodGradient());
+    // Create a gradient from darker to lighter version
+    return [
+      Color.lerp(baseColor, Colors.black, 0.2)!,
+      baseColor,
+    ];
   }
 
   _DayMoodData? _getMoodDataForDate(DateTime date) {
@@ -243,7 +276,9 @@ class _CalendarScreenState extends State<CalendarScreen>
 
             // Scrollable calendar months
             Expanded(
-              child: ListView.builder(
+              child: _displayMode == DisplayMode.condensed
+                  ? _buildCondensedYearView(theme)
+                  : ListView.builder(
                 controller: _scrollController,
                 padding: const EdgeInsets.only(
                   left: 16,
@@ -263,6 +298,7 @@ class _CalendarScreenState extends State<CalendarScreen>
                     getMoodData: _getMoodDataForDate,
                     theme: theme,
                     displayMode: _displayMode,
+                    colorStyle: _colorStyle,
                     onDateTap: _navigateToDiary,
                   );
                 },
@@ -352,10 +388,233 @@ class _CalendarScreenState extends State<CalendarScreen>
     );
   }
 
+  Widget _buildCondensedYearView(ThemeData theme) {
+    // Count entries per day and calculate average mood for the entire year
+    final Map<DateTime, List<MoodEntry>> dailyEntries = {};
+    for (var entry in widget.moodService.entries) {
+      final date = DateTime(
+        entry.timestamp.year,
+        entry.timestamp.month,
+        entry.timestamp.day,
+      );
+      if (date.year == currentYear) {
+        dailyEntries.putIfAbsent(date, () => []);
+        dailyEntries[date]!.add(entry);
+      }
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
+              children: [
+                Icon(
+                  Icons.calendar_today_rounded,
+                  size: 20,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Year at a Glance',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // Month headers (J F M A M J J A S O N D)
+            Row(
+              children: [
+                const SizedBox(width: 24), // Space for day numbers
+                ..._monthsData.map((monthData) {
+                  return Expanded(
+                    child: Center(
+                      child: Text(
+                        monthData.monthName.substring(0, 1),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
+            const SizedBox(height: 8),
+
+            // Day rows (1-31)
+            ...List.generate(31, (dayIndex) {
+              final dayNumber = dayIndex + 1;
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Row(
+                  children: [
+                    // Day number
+                    SizedBox(
+                      width: 24,
+                      child: Text(
+                        dayNumber.toString(),
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                    // Cells for each month
+                    ..._monthsData.map((monthData) {
+                      // Check if this day exists in this month
+                      if (dayNumber > monthData.days.length) {
+                        return const Expanded(child: SizedBox(height: 16));
+                      }
+
+                      final date = DateTime(currentYear, monthData.month, dayNumber);
+                      final entries = dailyEntries[date] ?? [];
+                      final today = DateTime.now();
+                      final isToday = date.year == today.year &&
+                          date.month == today.month &&
+                          date.day == today.day;
+
+                      // Calculate average mood for this day
+                      Color cellColor;
+                      Color? borderColor;
+
+                      if (entries.isEmpty) {
+                        cellColor = Colors.transparent;
+                        borderColor = theme.brightness == Brightness.dark
+                            ? theme.colorScheme.onSurface.withValues(alpha: 0.2)
+                            : const Color(0xFFE0E0E0);
+                      } else {
+                        // Calculate average mood rating for the day
+                        final sum = entries.fold<int>(0, (sum, e) => sum + e.moodRating);
+                        final avgMood = sum / entries.length;
+
+                        // Use the actual mood rating color (same as used in calendar cells)
+                        cellColor = _getMoodColorForAverage(avgMood);
+                      }
+
+                      return Expanded(
+                        child: GestureDetector(
+                          onTap: entries.isNotEmpty ? () => _navigateToDiary(date) : null,
+                          child: Container(
+                            height: 16,
+                            margin: const EdgeInsets.symmetric(horizontal: 1),
+                            decoration: BoxDecoration(
+                              color: cellColor,
+                              borderRadius: BorderRadius.circular(2),
+                              border: isToday
+                                  ? Border.all(
+                                color: theme.colorScheme.primary,
+                                width: 2,
+                              )
+                                  : (borderColor != null
+                                  ? Border.all(color: borderColor, width: 1)
+                                  : null),
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              );
+            }),
+
+            const SizedBox(height: 12),
+
+            // Legend with actual mood colors from gradient
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // No data indicator
+                Text(
+                  'No Data',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                _buildLegendBox(
+                  Colors.transparent,
+                  theme.brightness == Brightness.dark
+                      ? theme.colorScheme.onSurface.withValues(alpha: 0.2)
+                      : const Color(0xFFE0E0E0),
+                ),
+                const SizedBox(width: 16), // Space between no data and mood range
+
+                // Mood range
+                Text(
+                  'Low',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                _buildLegendBox(widget.themeService
+                    .getMoodGradient()[0]
+                    .withValues(alpha: 0.35)), // Rating 1-2
+                _buildLegendBox(widget.themeService
+                    .getMoodGradient()[2]
+                    .withValues(alpha: 0.35)), // Rating 5-6
+                _buildLegendBox(widget.themeService
+                    .getMoodGradient()[4]
+                    .withValues(alpha: 0.35)), // Rating 9-10
+                const SizedBox(width: 6),
+                Text(
+                  'High',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLegendBox(Color color, [Color? borderColor]) {
+    return Container(
+      width: 12,
+      height: 12,
+      margin: const EdgeInsets.symmetric(horizontal: 2),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(2),
+        border: borderColor != null ? Border.all(color: borderColor, width: 1) : null,
+      ),
+    );
+  }
+
   Widget _buildModeSelector(ThemeData theme) {
     return Container(
       margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
@@ -367,29 +626,192 @@ class _CalendarScreenState extends State<CalendarScreen>
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          _buildModeButton(
-            theme,
-            'Solid',
-            Icons.circle,
-            DisplayMode.solid,
+          // Compact header - always visible
+          InkWell(
+            onTap: () {
+              setState(() {
+                _isModePickerExpanded = !_isModePickerExpanded;
+              });
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.tune_rounded,
+                    size: 20,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'View Options',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${_getDisplayModeLabel(_displayMode)} • ${_getColorStyleLabel(_colorStyle)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    _isModePickerExpanded
+                        ? Icons.expand_more_rounded
+                        : Icons.chevron_right_rounded,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ],
+              ),
+            ),
           ),
-          _buildModeButton(
-            theme,
-            'Circle',
-            Icons.circle_outlined,
-            DisplayMode.circle,
-          ),
-          _buildModeButton(
-            theme,
-            'Gradient',
-            Icons.gradient_rounded,
-            DisplayMode.gradient,
+
+          // Expandable content
+          AnimatedSize(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOutCubic,
+            child: _isModePickerExpanded
+                ? Column(
+              children: [
+                Divider(
+                  height: 1,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.1),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    children: [
+                      // Layout Mode Row
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.view_module_rounded,
+                            size: 16,
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Layout',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          _buildModeButton(
+                            theme,
+                            'Grid',
+                            Icons.grid_4x4_rounded,
+                            DisplayMode.normal,
+                          ),
+                          _buildModeButton(
+                            theme,
+                            'Circle',
+                            Icons.circle_outlined,
+                            DisplayMode.circle,
+                          ),
+                          _buildModeButton(
+                            theme,
+                            'Condensed',
+                            Icons.calendar_view_month_rounded,
+                            DisplayMode.condensed,
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 12),
+                      Divider(
+                        height: 1,
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.1),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Color Style Row
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.palette_rounded,
+                            size: 16,
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Colors',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          _buildColorStyleButton(
+                            theme,
+                            'Solid',
+                            Icons.square_rounded,
+                            ColorStyle.solid,
+                          ),
+                          _buildColorStyleButton(
+                            theme,
+                            'Gradient',
+                            Icons.gradient_rounded,
+                            ColorStyle.gradient,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            )
+                : const SizedBox.shrink(),
           ),
         ],
       ),
     );
+  }
+
+  String _getDisplayModeLabel(DisplayMode mode) {
+    switch (mode) {
+      case DisplayMode.normal:
+        return 'Grid';
+      case DisplayMode.circle:
+        return 'Circle';
+      case DisplayMode.condensed:
+        return 'Condensed';
+    }
+  }
+
+  String _getColorStyleLabel(ColorStyle style) {
+    switch (style) {
+      case ColorStyle.solid:
+        return 'Solid';
+      case ColorStyle.gradient:
+        return 'Gradient';
+    }
   }
 
   Widget _buildModeButton(
@@ -408,7 +830,7 @@ class _CalendarScreenState extends State<CalendarScreen>
           });
         },
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
             color: isSelected
                 ? theme.colorScheme.primary.withValues(alpha: 0.1)
@@ -423,7 +845,7 @@ class _CalendarScreenState extends State<CalendarScreen>
                 size: 20,
                 color: isSelected
                     ? theme.colorScheme.primary
-                    : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                    : theme.colorScheme.onSurface.withValues(alpha: 0.75),
               ),
               const SizedBox(height: 4),
               Text(
@@ -433,7 +855,58 @@ class _CalendarScreenState extends State<CalendarScreen>
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                   color: isSelected
                       ? theme.colorScheme.primary
-                      : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                      : theme.colorScheme.onSurface.withValues(alpha: 0.75),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildColorStyleButton(
+      ThemeData theme,
+      String label,
+      IconData icon,
+      ColorStyle style,
+      ) {
+    final isSelected = _colorStyle == style;
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          setState(() {
+            _colorStyle = style;
+          });
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? theme.colorScheme.primary.withValues(alpha: 0.1)
+                : theme.colorScheme.surface,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 20,
+                color: isSelected
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurface.withValues(alpha: 0.75),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                  color: isSelected
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurface.withValues(alpha: 0.75),
                 ),
               ),
             ],
@@ -482,6 +955,7 @@ class _MonthSection extends StatelessWidget {
   final _DayMoodData? Function(DateTime) getMoodData;
   final ThemeData theme;
   final DisplayMode displayMode;
+  final ColorStyle colorStyle;
   final Function(DateTime) onDateTap;
 
   const _MonthSection({
@@ -490,6 +964,7 @@ class _MonthSection extends StatelessWidget {
     required this.getMoodData,
     required this.theme,
     required this.displayMode,
+    required this.colorStyle,
     required this.onDateTap,
   });
 
@@ -519,6 +994,7 @@ class _MonthSection extends StatelessWidget {
             getMoodData: getMoodData,
             theme: theme,
             displayMode: displayMode,
+            colorStyle: colorStyle,
             onDateTap: onDateTap,
           ),
         ),
@@ -533,6 +1009,7 @@ class _CalendarGrid extends StatelessWidget {
   final _DayMoodData? Function(DateTime) getMoodData;
   final ThemeData theme;
   final DisplayMode displayMode;
+  final ColorStyle colorStyle;
   final Function(DateTime) onDateTap;
 
   const _CalendarGrid({
@@ -540,6 +1017,7 @@ class _CalendarGrid extends StatelessWidget {
     required this.getMoodData,
     required this.theme,
     required this.displayMode,
+    required this.colorStyle,
     required this.onDateTap,
   });
 
@@ -584,6 +1062,7 @@ class _CalendarGrid extends StatelessWidget {
                   moodData: getMoodData(date),
                   theme: theme,
                   displayMode: displayMode,
+                  colorStyle: colorStyle,
                   onTap: onDateTap,
                 ),
               ),
@@ -624,6 +1103,7 @@ class _DayCell extends StatelessWidget {
   final _DayMoodData? moodData;
   final ThemeData theme;
   final DisplayMode displayMode;
+  final ColorStyle colorStyle;
   final Function(DateTime) onTap;
 
   const _DayCell({
@@ -632,6 +1112,7 @@ class _DayCell extends StatelessWidget {
     required this.moodData,
     required this.theme,
     required this.displayMode,
+    required this.colorStyle,
     required this.onTap,
   });
 
@@ -645,9 +1126,11 @@ class _DayCell extends StatelessWidget {
         padding: const EdgeInsets.all(2),
         child: displayMode == DisplayMode.circle
             ? _buildCircleMode(hasEntry)
-            : displayMode == DisplayMode.gradient
+            : displayMode == DisplayMode.normal
+            ? (colorStyle == ColorStyle.gradient
             ? _buildGradientMode(hasEntry)
-            : _buildSolidMode(hasEntry),
+            : _buildSolidMode(hasEntry))
+            : _buildSolidMode(hasEntry), // Fallback
       ),
     );
   }
@@ -660,7 +1143,7 @@ class _DayCell extends StatelessWidget {
     final moodEmoji = hasEntry ? moodData!.emoji : '';
     final textColor = hasEntry
         ? (isDark ? Colors.white : Colors.grey[800]!)
-        : theme.colorScheme.onSurface.withValues(alpha: 0.3);
+        : (isDark ? Colors.white70 : Colors.grey[700]!);
 
     return Container(
       width: double.infinity,
@@ -707,7 +1190,7 @@ class _DayCell extends StatelessWidget {
         : const Color(0xFFE0E0E0));
     final textColor = hasEntry
         ? (isDark ? Colors.white : Colors.grey[800]!)
-        : theme.colorScheme.onSurface.withValues(alpha: 0.3);
+        : (isDark ? Colors.white70 : Colors.grey[700]!);
 
     return Container(
       width: double.infinity,
@@ -745,8 +1228,8 @@ class _DayCell extends StatelessWidget {
     final moodEmoji = hasEntry ? moodData!.emoji : '';
     final textColor = hasEntry
         ? Colors.white
-        : theme.colorScheme.onSurface.withValues(alpha: 0.3);
-
+        : (isDark ? Colors.white70 : Colors.grey[700]!);
+    
     return Container(
       width: double.infinity,
       height: double.infinity,

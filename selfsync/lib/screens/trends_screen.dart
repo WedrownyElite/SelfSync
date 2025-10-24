@@ -4,17 +4,20 @@ import '../models/mood_entry.dart';
 import '../services/mood_service.dart';
 import '../widgets/side_drawer.dart';
 import '../utils/app_logger.dart';
+import '../services/theme_service.dart';
 
 class TrendsScreen extends StatefulWidget {
   final MoodService moodService;
   final Function(int tabIndex, DateTime? date)? onNavigateToTab;
   final SideDrawerController drawerController;
+  final ThemeService themeService;
 
   const TrendsScreen({
     super.key,
     required this.moodService,
     this.onNavigateToTab,
     required this.drawerController,
+    required this.themeService,
   });
 
   @override
@@ -170,7 +173,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
                 Text(
                   'Understand your patterns',
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                   ),
                 ),
               ],
@@ -212,7 +215,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
               'Start logging your moods to see\nyour trends and insights here',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
               ),
             ),
           ],
@@ -252,7 +255,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
               'Try selecting a different time range\nor log more moods',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
               ),
             ),
           ],
@@ -449,7 +452,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
                 label,
                 style: TextStyle(
                   fontSize: 12,
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -558,7 +561,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
                     : 'Daily Average',
                 style: TextStyle(
                   fontSize: 11,
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -640,7 +643,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
                         : 'Each point shows your daily average mood',
                     style: TextStyle(
                       fontSize: 12,
-                      color: Colors.grey[700],
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
                     ),
                   ),
                 ),
@@ -657,7 +660,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
       label,
       style: TextStyle(
         fontSize: 10,
-        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+        color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
         fontWeight: FontWeight.w500,
       ),
     );
@@ -679,7 +682,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
             DateFormat('MMM d').format(date),
             style: TextStyle(
               fontSize: 10,
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
             ),
             textAlign: index == 0
                 ? TextAlign.start
@@ -845,7 +848,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
-                              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                             ),
                           ),
                         ),
@@ -918,7 +921,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
                                       fontWeight: isToday ? FontWeight.bold : FontWeight.w600,
                                       color: count > 0
                                           ? Colors.white
-                                          : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                                          : theme.colorScheme.onSurface.withValues(alpha: 0.7),
                                     ),
                                   ),
                                 ),
@@ -939,7 +942,9 @@ class _TrendsScreenState extends State<TrendsScreen> {
             children: [
               Text(
                 'Less',
-                style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+                style: TextStyle(
+                  fontSize: 10, 
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.7),),
               ),
               const SizedBox(width: 6),
               _buildLegendBox(
@@ -954,7 +959,9 @@ class _TrendsScreenState extends State<TrendsScreen> {
               const SizedBox(width: 6),
               Text(
                 'More',
-                style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+                style: TextStyle(
+                  fontSize: 10, 
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.7),),
               ),
             ],
           ),
@@ -1064,7 +1071,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
                       style: TextStyle(
                         fontSize: 9,
                         fontWeight: FontWeight.w500,
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                       ),
                       textAlign: TextAlign.right,
                     ),
@@ -1253,7 +1260,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
-                          color: Colors.grey[800],
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
                         ),
                       ),
                       Text(
@@ -1286,19 +1293,20 @@ class _TrendsScreenState extends State<TrendsScreen> {
   }
 
   Color _getMoodColor(String label) {
+    final gradient = widget.themeService.getMoodGradient();
     switch (label) {
       case 'Excellent':
-        return Colors.green;
+        return gradient[4]; // 9-10
       case 'Good':
-        return Colors.lightGreen;
+        return gradient[3]; // 7-8
       case 'Okay':
-        return Colors.amber;
+        return gradient[2]; // 5-6
       case 'Low':
-        return Colors.orange;
+        return gradient[1]; // 3-4
       case 'Struggling':
-        return Colors.red;
+        return gradient[0]; // 1-2
       default:
-        return Colors.grey;
+        return gradient[2];
     }
   }
 
@@ -1339,7 +1347,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
                 insight,
                 style: TextStyle(
                   fontSize: 14,
-                  color: Colors.grey[700],
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
                   height: 1.4,
                 ),
               ),
