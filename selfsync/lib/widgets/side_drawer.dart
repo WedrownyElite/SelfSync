@@ -4,10 +4,12 @@
 /// Occupies 1/4 of screen width with smooth animation
 class SideDrawer extends StatelessWidget {
   final VoidCallback onClose;
+  final VoidCallback? onSettingsTap;
 
   const SideDrawer({
     super.key,
     required this.onClose,
+    this.onSettingsTap,
   });
 
   @override
@@ -16,21 +18,21 @@ class SideDrawer extends StatelessWidget {
     final screenWidth = MediaQuery.of(context).size.width;
     // Use a minimum width to prevent overflow on narrow screens
     final drawerWidth = screenWidth < 400
-        ? screenWidth * 0.7  // 70% on very small screens
+        ? screenWidth * 0.7 // 70% on very small screens
         : screenWidth < 600
-        ? screenWidth * 0.5  // 50% on small screens
+        ? screenWidth * 0.5 // 50% on small screens
         : screenWidth * 0.25; // 25% on larger screens
 
     return Material(
       color: Colors.transparent,
       child: Container(
         width: drawerWidth,
-        constraints: BoxConstraints(
+        constraints: const BoxConstraints(
           minWidth: 200, // Minimum width to prevent overflow
           maxWidth: 400, // Maximum width for very large screens
         ),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: theme.colorScheme.surface,
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.2),
@@ -92,7 +94,8 @@ class SideDrawer extends StatelessWidget {
                       Text(
                         'Self Sync',
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                          color: theme.colorScheme.onSurface
+                              .withValues(alpha: 0.6),
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -169,8 +172,11 @@ class SideDrawer extends StatelessWidget {
           icon: Icons.settings_rounded,
           title: 'Settings',
           onTap: () {
-            // TODO: Navigate to settings
-            onClose();
+            if (onSettingsTap != null) {
+              onSettingsTap!();
+            } else {
+              onClose();
+            }
           },
           theme: theme,
         ),
@@ -267,11 +273,13 @@ class SideDrawerController extends ChangeNotifier {
 class DrawerWrapper extends StatefulWidget {
   final Widget child;
   final SideDrawerController? controller;
+  final VoidCallback? onSettingsTap;
 
   const DrawerWrapper({
     super.key,
     required this.child,
     this.controller,
+    this.onSettingsTap,
   });
 
   @override
@@ -347,6 +355,7 @@ class _DrawerWrapperState extends State<DrawerWrapper>
             alignment: Alignment.centerLeft,
             child: SideDrawer(
               onClose: _controller.close,
+              onSettingsTap: widget.onSettingsTap,
             ),
           ),
         ),
