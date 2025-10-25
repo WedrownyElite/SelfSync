@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'utils/app_logger.dart';
+import 'utils/performance_test_helper.dart';
 import 'screens/calendar_screen.dart';
 import 'screens/mood_log_screen.dart';
 import 'screens/trends_screen.dart';
@@ -82,6 +83,9 @@ class _MainScreenState extends State<MainScreen> {
   late final SideDrawerController _drawerController;
   DateTime? _targetDate;
 
+  // ⚡ OPTIMIZATION: Cache screen widgets
+  late final List<Widget> _screens;
+
   @override
   void initState() {
     super.initState();
@@ -104,6 +108,27 @@ class _MainScreenState extends State<MainScreen> {
       AppLogger.error('Failed to initialize SideDrawerController',
           tag: 'MainScreen', error: e, stackTrace: stackTrace);
     }
+
+    // ⚡ OPTIMIZATION: Initialize screens once in initState
+    _screens = [
+      CalendarScreen(
+        moodService: _moodService,
+        onDateSelected: _onDateSelected,
+        drawerController: _drawerController,
+        themeService: widget.themeService,
+      ),
+      MoodLogScreen(
+        moodService: _moodService,
+        initialDate: _targetDate,
+        drawerController: _drawerController,
+        themeService: widget.themeService,
+      ),
+      TrendsScreen(
+        moodService: _moodService,
+        drawerController: _drawerController,
+        themeService: widget.themeService,
+      ),
+    ];
 
     AppLogger.prettyPrint({
       'Initial tab index': _currentIndex.toString(),
@@ -172,49 +197,26 @@ class _MainScreenState extends State<MainScreen> {
     _drawerController.close();
   }
 
-  Widget _buildScreen() {
-    AppLogger.lifecycle('Building screen for index: $_currentIndex',
-        tag: 'MainScreen');
-
-    switch (_currentIndex) {
-      case 0:
-        return CalendarScreen(
-          moodService: _moodService,
-          onDateSelected: _onDateSelected,
-          drawerController: _drawerController,
-          themeService: widget.themeService,
-        );
-      case 1:
-        return MoodLogScreen(
-          moodService: _moodService,
-          initialDate: _targetDate,
-          drawerController: _drawerController,
-          themeService: widget.themeService,
-        );
-      case 2:
-        return TrendsScreen(
-          moodService: _moodService,
-          drawerController: _drawerController,
-          themeService: widget.themeService,
-        );
-      default:
-        AppLogger.error('Invalid tab index: $_currentIndex',
-            tag: 'MainScreen');
-        return const Center(child: Text('Invalid screen'));
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
+    // Track builds for performance testing
+    PerformanceTestHelper.recordBuild('MainScreen');
+
     return DrawerWrapper(
       controller: _drawerController,
       onSettingsTap: _navigateToSettings,
-      onCalendarTap: () => _onNavigationTap(0), // Navigate to Calendar
-      onDiaryTap: () => _onNavigationTap(1),    // Navigate to Diary/Mood Log
-      onTrendsTap: () => _onNavigationTap(2),   // Navigate to Trends
+      onCalendarTap: () => _onNavigationTap(0),
+      onDiaryTap: () => _onNavigationTap(1),
+      onTrendsTap: () => _onNavigationTap(2),
       child: Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        body: _buildScreen(),
+        // ⚡ OPTIMIZATION: Use IndexedStack instead of switching widgets
+        // This keeps all screens in memory and just shows/hides them
+        // Result: Screens only build ONCE instead of on every tab switch
+        body: IndexedStack(
+          index: _currentIndex,
+          children: _screens,
+        ),
         bottomNavigationBar: ModernNavBar(
           currentIndex: _currentIndex,
           onTap: _onNavigationTap,

@@ -1,6 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 import '../services/theme_service.dart';
 import '../widgets/side_drawer.dart';
+import '../utils/performance_test_helper.dart';
 
 class SettingsScreen extends StatefulWidget {
   final ThemeService themeService;
@@ -35,12 +36,57 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _buildThemeModeSection(theme),
                   const SizedBox(height: 24),
                   _buildColorGradientSection(theme),
+
+                  _buildDebugPanel(theme),
+                  
                   const SizedBox(height: 40),
                 ],
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildDebugPanel(ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(top: 24),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.errorContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '🔧 Performance Testing',
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: theme.colorScheme.onErrorContainer,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          ElevatedButton.icon(
+            onPressed: () {
+              PerformanceTestHelper.printReport();
+            },
+            icon: const Icon(Icons.analytics),
+            label: const Text('Print Performance Report'),
+          ),
+
+          const SizedBox(height: 8),
+
+          ElevatedButton.icon(
+            onPressed: () {
+              PerformanceTestHelper.reset();
+            },
+            icon: const Icon(Icons.refresh),
+            label: const Text('Reset Counters'),
+          ),
+        ],
       ),
     );
   }

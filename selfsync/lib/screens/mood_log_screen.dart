@@ -6,6 +6,7 @@ import '../services/mood_service.dart';
 import '../widgets/side_drawer.dart';
 import '../utils/app_logger.dart';
 import '../services/theme_service.dart';
+import '../utils/performance_test_helper.dart';
 
 class MoodLogScreen extends StatefulWidget {
   final MoodService moodService;
@@ -339,6 +340,8 @@ class _MoodLogScreenState extends State<MoodLogScreen>
 
   @override
   Widget build(BuildContext context) {
+    PerformanceTestHelper.recordBuild('MoodLogScreen');
+    
     final theme = Theme.of(context);
     final now = DateTime.now();
     final isToday = _selectedStartDate == null ||

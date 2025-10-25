@@ -363,11 +363,8 @@ class _DrawerWrapperState extends State<DrawerWrapper>
       _animationController.reverse();
     }
 
-    // CRITICAL: Force rebuild to show/hide overlay
-    if (mounted) {
-      AppLogger.debug('🔄 Calling setState to rebuild with overlay', tag: 'DrawerWrapper');
-      setState(() {});
-    }
+    // ⚡ OPTIMIZATION: Removed setState() call!
+    // AnimatedBuilder will automatically rebuild overlay when animation changes
   }
 
   @override
@@ -383,20 +380,15 @@ class _DrawerWrapperState extends State<DrawerWrapper>
       'Building DrawerWrapper - Drawer is ${_controller.isOpen ? "OPEN" : "CLOSED"}',
       tag: 'DrawerWrapper',
     );
-    AppLogger.debug('Screen width: $screenWidth, Drawer width: $drawerWidth', tag: 'DrawerWrapper');
-
-    if (_controller.isOpen) {
-      AppLogger.debug('✅ Rendering overlay (drawer is open)', tag: 'DrawerWrapper');
-    } else {
-      AppLogger.debug('❌ Overlay NOT rendered (drawer is closed)', tag: 'DrawerWrapper');
-    }
 
     return Stack(
       children: [
-        // Main content
-        widget.child,
+        // Main content - wrapped in RepaintBoundary for better performance
+        RepaintBoundary(
+          child: widget.child,
+        ),
 
-        // Overlay - Fades in/out smoothly with drawer animation
+        // ⚡ OPTIMIZATION: AnimatedBuilder only rebuilds overlay, not main content
         AnimatedBuilder(
           animation: _animationController,
           builder: (context, child) {
@@ -426,21 +418,6 @@ class _DrawerWrapperState extends State<DrawerWrapper>
                       onTap: () {
                         AppLogger.warning('🎯 OVERLAY TAPPED - Closing drawer', tag: 'DrawerWrapper');
                         _controller.close();
-                      },
-                      onTapDown: (details) {
-                        AppLogger.debug(
-                          '👇 Tap DOWN on overlay at ${details.globalPosition}',
-                          tag: 'DrawerWrapper',
-                        );
-                      },
-                      onTapUp: (details) {
-                        AppLogger.debug(
-                          '👆 Tap UP on overlay at ${details.globalPosition}',
-                          tag: 'DrawerWrapper',
-                        );
-                      },
-                      onTapCancel: () {
-                        AppLogger.warning('❌ Tap CANCELLED on overlay', tag: 'DrawerWrapper');
                       },
                       behavior: HitTestBehavior.opaque,
                       child: Container(

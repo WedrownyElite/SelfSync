@@ -4,6 +4,7 @@ import '../models/mood_entry.dart';
 import 'package:intl/intl.dart';
 import '../widgets/side_drawer.dart';
 import '../services/theme_service.dart';
+import '../utils/performance_test_helper.dart';
 
 enum DisplayMode {
   normal,
@@ -261,6 +262,8 @@ class _CalendarScreenState extends State<CalendarScreen>
 
   @override
   Widget build(BuildContext context) {
+    PerformanceTestHelper.recordBuild('CalendarScreen');
+    
     super.build(context);
     final theme = Theme.of(context);
 
