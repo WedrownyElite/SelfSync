@@ -26,11 +26,12 @@ class MoodLogScreen extends StatefulWidget {
 }
 
 class _MoodLogScreenState extends State<MoodLogScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   int _currentMoodRating = 5;
   bool _isInputExpanded = false;
+  bool _isKeyboardVisible = false;
   late AnimationController _fadeController;
   late AnimationController _calendarExpandController;
 
@@ -56,14 +57,14 @@ class _MoodLogScreenState extends State<MoodLogScreen>
   List<int> _availableYears = [];
 
   // Date navigation
-  bool _isJumpingToDate = false;
   final Map<String, GlobalKey> _dateKeys = {};
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     AppLogger.lifecycle('MoodLogScreen initialized', tag: 'MoodLog');
-    
+
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 600),
       vsync: this,
@@ -187,8 +188,42 @@ class _MoodLogScreenState extends State<MoodLogScreen>
   }
 
   @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    final bottomInset = WidgetsBinding.instance.platformDispatcher.views.first.viewInsets.bottom;
+
+    // Keyboard is visible if bottom inset > 0
+    final isKeyboardNowVisible = bottomInset > 0;
+
+    if (_isKeyboardVisible != isKeyboardNowVisible) {
+      setState(() {
+        _isKeyboardVisible = isKeyboardNowVisible;
+      });
+
+      if (_isKeyboardVisible) {
+        // Keyboard is opening - wait for it to finish before showing slider
+        AppLogger.debug('Keyboard opening - waiting to show slider', tag: 'MoodLog');
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted && _isKeyboardVisible && _messageController.text.isEmpty) {
+            setState(() {
+              _isInputExpanded = true;
+            });
+          }
+        });
+      } else {
+        // Keyboard is closing - hide slider immediately
+        AppLogger.debug('Keyboard closing - hiding slider', tag: 'MoodLog');
+        setState(() {
+          _isInputExpanded = false;
+        });
+      }
+    }
+  }
+
+  @override
   void dispose() {
     AppLogger.lifecycle('MoodLogScreen disposing', tag: 'MoodLog');
+    WidgetsBinding.instance.removeObserver(this);
     _messageController.dispose();
     _scrollController.dispose();
     _fadeController.dispose();
@@ -230,7 +265,6 @@ class _MoodLogScreenState extends State<MoodLogScreen>
         'Scrolling to date: ${DateFormat('yyyy-MM-dd').format(date)}',
         tag: 'MoodLog'
     );
-    _isJumpingToDate = true;
     final dateKey = DateFormat('yyyy-MM-dd').format(date);
 
     if (_dateKeys.containsKey(dateKey)) {
@@ -240,16 +274,14 @@ class _MoodLogScreenState extends State<MoodLogScreen>
           context,
           duration: const Duration(milliseconds: 600),
           curve: Curves.easeInOutCubic,
-        ).then((_) {
-          _isJumpingToDate = false;
-        });
+        );
       }
     }
 
     _fadeController.forward();
   }
 
-  void _sendMessage() async {
+  void _sendMessage() {
     if (_messageController.text.trim().isEmpty) {
       AppLogger.warning('Attempted to send empty message', tag: 'MoodLog');
       return;
@@ -258,373 +290,171 @@ class _MoodLogScreenState extends State<MoodLogScreen>
     final message = _messageController.text.trim();
     final rating = _currentMoodRating;
 
-    AppLogger.separator(label: 'MOOD ENTRY SUBMISSION');
-    AppLogger.data('Creating mood entry',
-        details: 'Rating: $rating/10, Message length: ${message.length} chars',
+    AppLogger.data('Adding mood entry',
+        details: 'Rating: $rating, Message length: ${message.length}',
         tag: 'MoodLog'
     );
 
-    widget.moodService.addEntry(
-      _messageController.text.trim(),
-      _currentMoodRating,
-    );
+    // Add mood entry using MoodService
+    widget.moodService.addEntry(message, rating);
+    AppLogger.success('Mood entry added successfully', tag: 'MoodLog');
 
+    // Clear input and reset state
     _messageController.clear();
     setState(() {
       _isInputExpanded = false;
+      _currentMoodRating = 5;
     });
 
-    // Scroll to bottom to show new entry (chat style)
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    // Provide haptic feedback
+    HapticFeedback.mediumImpact();
+
+    // Scroll to bottom to show new entry
+    Future.delayed(const Duration(milliseconds: 100), () {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
           duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOutCubic,
+          curve: Curves.easeOut,
         );
       }
     });
   }
 
   Color _getMoodColor(int rating) {
-    return getMoodColorFromRating(rating, widget.themeService.getMoodGradient());
-  }
-
-  Map<String, List<MoodEntry>> _groupEntriesByDate() {
-    final grouped = <String, List<MoodEntry>>{};
-    for (var entry in widget.moodService.entries) {
-      final dateKey = DateFormat('yyyy-MM-dd').format(entry.timestamp);
-      grouped.putIfAbsent(dateKey, () => []).add(entry);
+    if (rating <= 3) {
+      return Colors.red;
+    } else if (rating <= 5) {
+      return Colors.orange;
+    } else if (rating <= 7) {
+      return Colors.yellow.shade700;
+    } else {
+      return Colors.green;
     }
-    // Sort entries within each date group (oldest first within the day)
-    grouped.forEach((key, entries) {
-      entries.sort((a, b) => a.timestamp.compareTo(b.timestamp));
-    });
-    return grouped;
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final size = MediaQuery.of(context).size;
-    final groupedEntries = _groupEntriesByDate();
-    final sortedDates = groupedEntries.keys.toList();
+    final now = DateTime.now();
+    final isToday = _selectedStartDate == null ||
+        (_selectedStartDate!.year == now.year &&
+            _selectedStartDate!.month == now.month &&
+            _selectedStartDate!.day == now.day);
 
-    // Check if user is viewing today or a filtered date
-    final isViewingToday = _selectedStartDate == null && _selectedEndDate == null;
+    return GestureDetector(
+      // CRITICAL: Dismiss keyboard when tapping outside
+      onTap: () {
+        FocusScope.of(context).unfocus();
+      },
+      child: Scaffold(
+        resizeToAvoidBottomInset: true,
+        backgroundColor: theme.scaffoldBackgroundColor,
+        body: SafeArea(
+          child: Column(
+            children: [
+              _buildHeader(theme),
 
-    return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            Column(
-              children: [
-                _buildHeader(theme, sortedDates),
-                _buildCalendar(theme), // Always render for smooth animation
-                Expanded(
-                  child: _buildMessageList(theme, groupedEntries, sortedDates),
+              // Calendar area
+              SizeTransition(
+                sizeFactor: CurvedAnimation(
+                  parent: _calendarExpandController,
+                  curve: Curves.easeInOutCubic,
                 ),
-                // Animated input area - only visible when viewing today
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
-                  transitionBuilder: (child, animation) {
-                    return SizeTransition(
-                      sizeFactor: animation,
-                      axisAlignment: -1.0,
-                      child: FadeTransition(
-                        opacity: animation,
-                        child: child,
-                      ),
-                    );
-                  },
-                  child: isViewingToday
-                      ? _buildInputArea(theme)
-                      : const SizedBox.shrink(),
-                ),
-              ],
-            ),
-
-            // Month Picker Overlay
-            if (_isMonthPickerVisible || _monthPickerController.isAnimating)
-              _buildPickerOverlay(
-                theme: theme,
-                size: size,
-                controller: _monthPickerController,
-                items: _availableMonths,
-                scrollController: _monthScrollController,
-                isMonth: true,
+                child: _buildCalendarArea(theme),
               ),
 
-            // Year Picker Overlay
-            if (_isYearPickerVisible || _yearPickerController.isAnimating)
-              _buildPickerOverlay(
-                theme: theme,
-                size: size,
-                controller: _yearPickerController,
-                items: _availableYears,
-                scrollController: _yearScrollController,
-                isMonth: false,
+              // Main content
+              Expanded(
+                child: _buildMessageList(theme),
               ),
-          ],
+
+              // Input area - only show for current day
+              if (isToday)
+                _buildInputArea(theme),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildPickerOverlay({
-    required ThemeData theme,
-    required Size size,
-    required AnimationController controller,
-    required List<dynamic> items,
-    required ScrollController scrollController,
-    required bool isMonth,
-  }) {
-    // Create a FixedExtentScrollController for the wheel
-    final wheelController = FixedExtentScrollController(
-      initialItem: isMonth
-          ? _availableMonths.indexWhere((m) =>
-      m.year == _selectedCalendarMonth.year &&
-          m.month == _selectedCalendarMonth.month)
-          : _availableYears.indexOf(_selectedCalendarMonth.year),
-    );
-
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, child) {
-        return Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: GestureDetector(
-            onTap: _closePickers,
-            child: Container(
-              color: Colors.black.withValues(alpha: 0.5 * controller.value),
-              child: Center(
-                child: Transform.scale(
-                  scale: 0.9 + (0.1 * controller.value),
-                  child: Opacity(
-                    opacity: controller.value,
-                    child: Container(
-                      width: size.width * 0.75,
-                      height: 250,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surface,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.2),
-                            blurRadius: 20,
-                            offset: const Offset(0, 10),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          // Header bar
-                          Container(
-                            height: 50,
-                            padding: const EdgeInsets.symmetric(horizontal: 20),
-                            decoration: BoxDecoration(
-                              border: Border(
-                                bottom: BorderSide(
-                                  color: Colors.grey.withValues(alpha: 0.2),
-                                ),
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  isMonth ? 'Select Month' : 'Select Year',
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                TextButton(
-                                  onPressed: () {
-                                    HapticFeedback.mediumImpact();
-                                    final selectedIndex = wheelController.selectedItem;
-
-                                    if (selectedIndex >= 0 && selectedIndex < items.length) {
-                                      setState(() {
-                                        if (isMonth) {
-                                          final selectedMonth = items[selectedIndex] as DateTime;
-                                          _selectedCalendarMonth = DateTime(
-                                            selectedMonth.year,
-                                            selectedMonth.month,
-                                            _selectedCalendarMonth.day,
-                                          );
-                                        } else {
-                                          _selectedCalendarMonth = DateTime(
-                                            items[selectedIndex] as int,
-                                            _selectedCalendarMonth.month,
-                                            _selectedCalendarMonth.day,
-                                          );
-                                        }
-                                      });
-                                    }
-
-                                    _closePickers();
-                                    _scrollToDate(_selectedCalendarMonth);
-                                  },
-                                  child: Text(
-                                    'Done',
-                                    style: TextStyle(
-                                      color: theme.colorScheme.primary,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-
-                          // Wheel picker
-                          Expanded(
-                            child: Stack(
-                              children: [
-                                // Selection indicator
-                                Center(
-                                  child: Container(
-                                    height: 40,
-                                    margin: const EdgeInsets.symmetric(horizontal: 30),
-                                    decoration: BoxDecoration(
-                                      color: theme.colorScheme.primary.withValues(alpha: 0.08),
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                  ),
-                                ),
-
-                                // ListWheelScrollView
-                                ListWheelScrollView.useDelegate(
-                                  controller: wheelController,
-                                  itemExtent: 40,
-                                  diameterRatio: 1.5,
-                                  perspective: 0.003,
-                                  physics: const FixedExtentScrollPhysics(),
-                                  onSelectedItemChanged: (_) {
-                                    HapticFeedback.selectionClick();
-                                  },
-                                  childDelegate: ListWheelChildBuilderDelegate(
-                                    builder: (context, index) {
-                                      if (index < 0 || index >= items.length) {
-                                        return null;
-                                      }
-
-                                      final item = items[index];
-                                      return Center(
-                                        child: Text(
-                                          isMonth
-                                              ? DateFormat('MMMM yyyy').format(item as DateTime)
-                                              : item.toString(),
-                                          style: theme.textTheme.bodyLarge?.copyWith(
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                    childCount: items.length,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
+  Widget _buildHeader(ThemeData theme) {
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Top row with hamburger and title
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Row(
+              children: [
+                GestureDetector(
+                  onTap: () {
+                    // Dismiss keyboard before opening drawer
+                    FocusScope.of(context).unfocus();
+                    setState(() {
+                      _isInputExpanded = false;
+                    });
+                    widget.drawerController.open();
+                  },
+                  child: const Icon(Icons.menu_rounded),
+                ),
+                const SizedBox(width: 16),
+                const Text('💜', style: TextStyle(fontSize: 24)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Mood Diary',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.primary,
                     ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Bottom row with centered calendar button
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Center(
+              child: GestureDetector(
+                onTap: () {
+                  // Dismiss keyboard before toggling calendar
+                  FocusScope.of(context).unfocus();
+                  setState(() {
+                    _isInputExpanded = false;
+                    if (_isCalendarExpanded) {
+                      _calendarExpandController.reverse();
+                      _isCalendarExpanded = false;
+                      _closePickers();
+                    } else {
+                      _calendarExpandController.forward();
+                      _isCalendarExpanded = true;
+                    }
+                  });
+                },
+                child: AnimatedRotation(
+                  turns: _isCalendarExpanded ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 300),
+                  child: Icon(
+                    Icons.expand_more_rounded,
+                    color: theme.colorScheme.primary,
                   ),
                 ),
               ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildHeader(ThemeData theme, List<String> sortedDates) {
-    final entryCount = widget.moodService.entries.length;
-
-    return FadeTransition(
-      opacity: _fadeController,
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surface, // White surface to match app theme
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    HamburgerMenuButton(controller: widget.drawerController),
-                    const SizedBox(width: 12),
-                    Text(
-                      'Mood Diary',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        '$entryCount ${entryCount == 1 ? 'entry' : 'entries'}',
-                        style: TextStyle(
-                          color: theme.colorScheme.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-
-                // Calendar expand button at bottom center
-                const SizedBox(height: 8),
-                GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _isCalendarExpanded = !_isCalendarExpanded;
-                    });
-                    if (_isCalendarExpanded) {
-                      _calendarExpandController.forward();
-                    } else {
-                      _calendarExpandController.reverse();
-                    }
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: AnimatedRotation(
-                      turns: _isCalendarExpanded ? 0.5 : 0,
-                      duration: const Duration(milliseconds: 300),
-                      child: Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        color: theme.colorScheme.primary,
-                        size: 24,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
             ),
           ),
         ],
@@ -632,156 +462,706 @@ class _MoodLogScreenState extends State<MoodLogScreen>
     );
   }
 
-  Widget _buildCalendar(ThemeData theme) {
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 400),
-      curve: Curves.easeOutCubic,
-      child: SizeTransition(
-        sizeFactor: CurvedAnimation(
-          parent: _calendarExpandController,
-          curve: Curves.easeOutCubic,
-        ),
-        child: Container(
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface, // White surface to match app theme
-            border: Border(
-              bottom: BorderSide(
-                color: theme.dividerColor.withValues(alpha: 0.1),
+  Widget _buildCalendarArea(ThemeData theme) {
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Month/Year selector
+          _buildMonthYearSelector(theme),
+
+          // Month picker
+          SizeTransition(
+            sizeFactor: CurvedAnimation(
+              parent: _monthPickerController,
+              curve: Curves.easeInOutCubic,
+            ),
+            child: _isMonthPickerVisible ? _buildMonthPicker(theme) : const SizedBox.shrink(),
+          ),
+
+          // Year picker
+          SizeTransition(
+            sizeFactor: CurvedAnimation(
+              parent: _yearPickerController,
+              curve: Curves.easeInOutCubic,
+            ),
+            child: _isYearPickerVisible ? _buildYearPicker(theme) : const SizedBox.shrink(),
+          ),
+
+          // Calendar grid
+          if (!_isMonthPickerVisible && !_isYearPickerVisible)
+            _buildCalendarGrid(theme),
+
+          // Selected date range display
+          if (_selectedStartDate != null)
+            _buildSelectedDateDisplay(theme),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMonthYearSelector(ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Month selector button
+          GestureDetector(
+            onTap: () {
+              FocusScope.of(context).unfocus();
+              setState(() {
+                _isInputExpanded = false;
+              });
+              _showMonthPicker();
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: _isMonthPickerVisible
+                    ? theme.colorScheme.primary.withValues(alpha: 0.1)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    DateFormat('MMMM').format(_selectedCalendarMonth),
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: _isMonthPickerVisible
+                          ? theme.colorScheme.primary
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    _isMonthPickerVisible ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                    color: _isMonthPickerVisible
+                        ? theme.colorScheme.primary
+                        : null,
+                  ),
+                ],
               ),
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 4,
-                offset: const Offset(0, 2),
-              ),
-            ],
           ),
-          child: Column(
-            children: [
-              // Month/Year selector with tappable elements
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  children: [
-                    // Previous month button
-                    IconButton(
-                      onPressed: () {
-                        final currentIndex = _availableMonths.indexWhere((m) =>
-                        m.year == _selectedCalendarMonth.year &&
-                            m.month == _selectedCalendarMonth.month
-                        );
 
-                        if (currentIndex < _availableMonths.length - 1) {
-                          setState(() {
-                            _selectedCalendarMonth = _availableMonths[currentIndex + 1];
-                          });
-                        }
-                      },
-                      icon: const Icon(Icons.chevron_left_rounded),
-                      color: theme.colorScheme.primary,
+          // Year selector button
+          GestureDetector(
+            onTap: () {
+              FocusScope.of(context).unfocus();
+              setState(() {
+                _isInputExpanded = false;
+              });
+              _showYearPicker();
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: _isYearPickerVisible
+                    ? theme.colorScheme.primary.withValues(alpha: 0.1)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '${_selectedCalendarMonth.year}',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: _isYearPickerVisible
+                          ? theme.colorScheme.primary
+                          : null,
                     ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    _isYearPickerVisible ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                    color: _isYearPickerVisible
+                        ? theme.colorScheme.primary
+                        : null,
+                  ),
+                ],
+              ),
+            ),
+          ),
 
-                    Expanded(
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          // Tappable month
-                          Material(
-                            color: Colors.transparent,
-                            borderRadius: BorderRadius.circular(8),
-                            child: InkWell(
-                              onTap: _showMonthPicker,
-                              borderRadius: BorderRadius.circular(8),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 8
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      DateFormat('MMMM').format(_selectedCalendarMonth),
-                                      style: theme.textTheme.titleMedium?.copyWith(
-                                        fontWeight: FontWeight.bold,
-                                        color: theme.colorScheme.primary,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Icon(
-                                      Icons.arrow_drop_down_rounded,
-                                      color: theme.colorScheme.primary,
-                                      size: 20,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
+          // Close picker button
+          if (_isMonthPickerVisible || _isYearPickerVisible)
+            IconButton(
+              onPressed: () {
+                FocusScope.of(context).unfocus();
+                setState(() {
+                  _isInputExpanded = false;
+                });
+                _closePickers();
+              },
+              icon: const Icon(Icons.close_rounded),
+              tooltip: 'Close picker',
+            )
+          else
+            const SizedBox(width: 48),
+        ],
+      ),
+    );
+  }
 
-                          const SizedBox(width: 8),
+  Widget _buildMonthPicker(ThemeData theme) {
+    return Container(
+      height: 200,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: ListWheelScrollView.useDelegate(
+        controller: _monthScrollController,
+        itemExtent: 50,
+        perspective: 0.005,
+        diameterRatio: 1.2,
+        physics: const FixedExtentScrollPhysics(),
+        childDelegate: ListWheelChildBuilderDelegate(
+          builder: (context, index) {
+            if (index < 0 || index >= _availableMonths.length) return null;
+            final month = _availableMonths[index];
+            final isSelected = month.month == _selectedCalendarMonth.month &&
+                month.year == _selectedCalendarMonth.year;
 
-                          // Tappable year
-                          Material(
-                            color: Colors.transparent,
-                            borderRadius: BorderRadius.circular(8),
-                            child: InkWell(
-                              onTap: _showYearPicker,
-                              borderRadius: BorderRadius.circular(8),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 8
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      _selectedCalendarMonth.year.toString(),
-                                      style: theme.textTheme.titleMedium?.copyWith(
-                                        fontWeight: FontWeight.bold,
-                                        color: theme.colorScheme.primary,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Icon(
-                                      Icons.arrow_drop_down_rounded,
-                                      color: theme.colorScheme.primary,
-                                      size: 20,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
+            return GestureDetector(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                setState(() {
+                  _selectedCalendarMonth = month;
+                  _closePickers();
+                });
+              },
+              child: Center(
+                child: Text(
+                  DateFormat('MMMM yyyy').format(month),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    color: isSelected
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+              ),
+            );
+          },
+          childCount: _availableMonths.length,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildYearPicker(ThemeData theme) {
+    return Container(
+      height: 200,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: ListWheelScrollView.useDelegate(
+        controller: _yearScrollController,
+        itemExtent: 50,
+        perspective: 0.005,
+        diameterRatio: 1.2,
+        physics: const FixedExtentScrollPhysics(),
+        childDelegate: ListWheelChildBuilderDelegate(
+          builder: (context, index) {
+            if (index < 0 || index >= _availableYears.length) return null;
+            final year = _availableYears[index];
+            final isSelected = year == _selectedCalendarMonth.year;
+
+            return GestureDetector(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                setState(() {
+                  _selectedCalendarMonth = DateTime(_availableYears[index], _selectedCalendarMonth.month);
+                  _closePickers();
+                });
+              },
+              child: Center(
+                child: Text(
+                  '$year',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    color: isSelected
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+              ),
+            );
+          },
+          childCount: _availableYears.length,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCalendarGrid(ThemeData theme) {
+    final firstDayOfMonth = DateTime(_selectedCalendarMonth.year, _selectedCalendarMonth.month, 1);
+    final lastDayOfMonth = DateTime(_selectedCalendarMonth.year, _selectedCalendarMonth.month + 1, 0);
+    final daysInMonth = lastDayOfMonth.day;
+    final startingWeekday = firstDayOfMonth.weekday % 7;
+
+    // Get mood entries for this month
+    final monthEntries = widget.moodService.entries.where((entry) {
+      return entry.timestamp.year == _selectedCalendarMonth.year &&
+          entry.timestamp.month == _selectedCalendarMonth.month;
+    }).toList();
+
+    // Create a map of day -> average mood
+    final dayMoodMap = <int, double>{};
+    for (var entry in monthEntries) {
+      final day = entry.timestamp.day;
+      if (!dayMoodMap.containsKey(day)) {
+        dayMoodMap[day] = 0;
+      }
+      dayMoodMap[day] = dayMoodMap[day]! + entry.moodRating;
+    }
+
+    // Calculate averages
+    final dayCountMap = <int, int>{};
+    for (var entry in monthEntries) {
+      final day = entry.timestamp.day;
+      dayCountMap[day] = (dayCountMap[day] ?? 0) + 1;
+    }
+    for (var day in dayMoodMap.keys) {
+      dayMoodMap[day] = dayMoodMap[day]! / dayCountMap[day]!;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          // Weekday headers
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day) {
+              return Expanded(
+                child: Center(
+                  child: Text(
+                    day,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 8),
+
+          // Calendar days
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 7,
+              childAspectRatio: 1,
+              crossAxisSpacing: 4,
+              mainAxisSpacing: 4,
+            ),
+            itemCount: 42, // 6 rows * 7 days
+            itemBuilder: (context, index) {
+              final dayNumber = index - startingWeekday + 1;
+
+              if (dayNumber < 1 || dayNumber > daysInMonth) {
+                return const SizedBox.shrink();
+              }
+
+              final date = DateTime(_selectedCalendarMonth.year, _selectedCalendarMonth.month, dayNumber);
+              final isToday = date.year == DateTime.now().year &&
+                  date.month == DateTime.now().month &&
+                  date.day == DateTime.now().day;
+              final hasMoodData = dayMoodMap.containsKey(dayNumber);
+              final avgMood = dayMoodMap[dayNumber];
+
+              final isSelected = _selectedStartDate != null &&
+                  date.year == _selectedStartDate!.year &&
+                  date.month == _selectedStartDate!.month &&
+                  date.day == _selectedStartDate!.day;
+
+              final isInRange = _selectedStartDate != null &&
+                  _selectedEndDate != null &&
+                  date.isAfter(_selectedStartDate!) &&
+                  date.isBefore(_selectedEndDate!);
+
+              return GestureDetector(
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  setState(() {
+                    if (_selectedStartDate == null) {
+                      _selectedStartDate = date;
+                      _selectedEndDate = null;
+                    } else if (_selectedEndDate == null) {
+                      if (date.isBefore(_selectedStartDate!)) {
+                        _selectedEndDate = _selectedStartDate;
+                        _selectedStartDate = date;
+                      } else {
+                        _selectedEndDate = date;
+                      }
+                    } else {
+                      _selectedStartDate = date;
+                      _selectedEndDate = null;
+                    }
+                  });
+
+                  _loadDateRange(_selectedStartDate, _selectedEndDate);
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isSelected || isInRange
+                        ? theme.colorScheme.primary.withValues(alpha: 0.2)
+                        : hasMoodData
+                        ? _getMoodColor(avgMood!.round()).withValues(alpha: 0.2)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(8),
+                    border: isToday
+                        ? Border.all(
+                      color: theme.colorScheme.primary,
+                      width: 2,
+                    )
+                        : null,
+                  ),
+                  child: Center(
+                    child: Text(
+                      '$dayNumber',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: isSelected || isToday ? FontWeight.bold : FontWeight.normal,
+                        color: isSelected
+                            ? theme.colorScheme.primary
+                            : hasMoodData
+                            ? _getMoodColor(avgMood!.round())
+                            : theme.colorScheme.onSurface.withValues(alpha: 0.6),
                       ),
                     ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
 
-                    // Next month button
-                    IconButton(
-                      onPressed: () {
-                        final currentIndex = _availableMonths.indexWhere((m) =>
-                        m.year == _selectedCalendarMonth.year &&
-                            m.month == _selectedCalendarMonth.month
-                        );
+  Widget _buildSelectedDateDisplay(ThemeData theme) {
+    String dateText;
+    if (_selectedEndDate != null) {
+      dateText = '${DateFormat('MMM d').format(_selectedStartDate!)} - ${DateFormat('MMM d, yyyy').format(_selectedEndDate!)}';
+    } else {
+      dateText = DateFormat('MMMM d, yyyy').format(_selectedStartDate!);
+    }
 
-                        if (currentIndex > 0) {
-                          setState(() {
-                            _selectedCalendarMonth = _availableMonths[currentIndex - 1];
-                          });
-                        }
-                      },
-                      icon: const Icon(Icons.chevron_right_rounded),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary.withValues(alpha: 0.1),
+        border: Border(
+          top: BorderSide(
+            color: theme.colorScheme.primary.withValues(alpha: 0.2),
+            width: 1,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.calendar_today_rounded,
+            size: 16,
+            color: theme.colorScheme.primary,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              dateText,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: theme.colorScheme.primary,
+              ),
+            ),
+          ),
+          IconButton(
+            onPressed: () {
+              setState(() {
+                _selectedStartDate = null;
+                _selectedEndDate = null;
+              });
+              _loadDateRange(null, null);
+            },
+            icon: Icon(
+              Icons.close_rounded,
+              size: 20,
+              color: theme.colorScheme.primary,
+            ),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            tooltip: 'Clear selection',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMessageList(ThemeData theme) {
+    List<MoodEntry> entriesToShow;
+
+    if (_selectedStartDate != null) {
+      // Filter entries based on selection
+      if (_selectedEndDate != null) {
+        // Date range
+        entriesToShow = widget.moodService.entries.where((entry) {
+          final entryDate = DateTime(entry.timestamp.year, entry.timestamp.month, entry.timestamp.day);
+          final start = DateTime(_selectedStartDate!.year, _selectedStartDate!.month, _selectedStartDate!.day);
+          final end = DateTime(_selectedEndDate!.year, _selectedEndDate!.month, _selectedEndDate!.day);
+          return (entryDate.isAtSameMomentAs(start) ||
+              entryDate.isAfter(start)) &&
+              (entryDate.isAtSameMomentAs(end) ||
+                  entryDate.isBefore(end));
+        }).toList();
+      } else {
+        // Single date
+        entriesToShow = widget.moodService.entries.where((entry) {
+          return entry.timestamp.year == _selectedStartDate!.year &&
+              entry.timestamp.month == _selectedStartDate!.month &&
+              entry.timestamp.day == _selectedStartDate!.day;
+        }).toList();
+      }
+    } else {
+      // Show all entries
+      entriesToShow = widget.moodService.entries;
+    }
+
+    if (entriesToShow.isEmpty) {
+      return _buildEmptyState(theme);
+    }
+
+    // Group entries by date
+    final groupedEntries = <String, List<MoodEntry>>{};
+    for (var entry in entriesToShow) {
+      final dateKey = DateFormat('yyyy-MM-dd').format(entry.timestamp);
+      if (!groupedEntries.containsKey(dateKey)) {
+        groupedEntries[dateKey] = [];
+        _dateKeys[dateKey] = GlobalKey();
+      }
+      groupedEntries[dateKey]!.add(entry);
+    }
+
+    // Sort date keys in chronological order (OLDEST first) so newest appears at bottom
+    final sortedDateKeys = groupedEntries.keys.toList()
+      ..sort((a, b) => a.compareTo(b));
+
+    return FadeTransition(
+      opacity: _fadeController,
+      child: ListView.builder(
+        controller: _scrollController,
+        padding: const EdgeInsets.all(16),
+        itemCount: sortedDateKeys.length,
+        itemBuilder: (context, index) {
+          final dateKey = sortedDateKeys[index];
+          final entries = groupedEntries[dateKey]!;
+          final date = DateTime.parse(dateKey);
+
+          return Container(
+            key: _dateKeys[dateKey],
+            margin: const EdgeInsets.only(bottom: 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Date header
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    _formatDateHeader(date),
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
                       color: theme.colorScheme.primary,
+                    ),
+                  ),
+                ),
+
+                // Entries for this date
+                ...entries.map((entry) => _buildMessageBubble(entry, theme)),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  String _formatDateHeader(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final entryDate = DateTime(date.year, date.month, date.day);
+
+    if (entryDate == today) {
+      return 'Today';
+    } else if (entryDate == yesterday) {
+      return 'Yesterday';
+    } else if (entryDate.year == today.year) {
+      return DateFormat('MMMM d').format(date);
+    } else {
+      return DateFormat('MMMM d, yyyy').format(date);
+    }
+  }
+
+  Widget _buildMessageBubble(MoodEntry entry, ThemeData theme) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              // Mood emoji
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: _getMoodColor(entry.moodRating).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  MoodEntry.getMoodEmoji(entry.moodRating),
+                  style: const TextStyle(fontSize: 24),
+                ),
+              ),
+              const SizedBox(width: 12),
+
+              // Mood info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          '${entry.moodRating}/10',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: _getMoodColor(entry.moodRating),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _getMoodColor(entry.moodRating)
+                                .withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            MoodEntry.getMoodLabel(entry.moodRating),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: _getMoodColor(entry.moodRating),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.access_time_rounded,
+                          size: 14,
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          DateFormat('h:mm a').format(entry.timestamp),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
+            ],
+          ),
 
-              // Calendar grid
-              _buildCalendarGrid(theme),
+          if (entry.message.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                entry.message,
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(ThemeData theme) {
+    return Center(
+      child: FadeTransition(
+        opacity: _fadeController,
+        child: Padding(
+          padding: const EdgeInsets.all(40),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Center(
+                  child: Text('💭', style: TextStyle(fontSize: 40)),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'No mood entries yet',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Start tracking your mood by\nadding your first entry below',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
+              ),
             ],
           ),
         ),
@@ -789,485 +1169,14 @@ class _MoodLogScreenState extends State<MoodLogScreen>
     );
   }
 
-  Widget _buildCalendarGrid(ThemeData theme) {
-    final daysInMonth = DateTime(
-      _selectedCalendarMonth.year,
-      _selectedCalendarMonth.month + 1,
-      0,
-    ).day;
-
-    final firstDayOfWeek = DateTime(
-      _selectedCalendarMonth.year,
-      _selectedCalendarMonth.month,
-      1,
-    ).weekday;
-
-    return Container(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-          // Range selection toggle
-          Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              _selectedStartDate != null && _selectedEndDate != null
-                  ? '${DateFormat('MMM d').format(_selectedStartDate!)} - ${DateFormat('MMM d').format(_selectedEndDate!)}'
-                  : _selectedStartDate != null
-                  ? DateFormat('MMM d, yyyy').format(_selectedStartDate!)
-                  : 'Select dates',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w500,
-                color: theme.colorScheme.onSurface,
-              ),
-            ),
-            if (_selectedStartDate != null || _selectedEndDate != null)
-              TextButton(
-                onPressed: () {
-                  setState(() {
-                    _selectedStartDate = null;
-                    _selectedEndDate = null;
-                  });
-                  // Show all entries when cleared
-                  _loadDateRange(null, null);
-                },
-                child: Text(
-                  'Clear',
-                  style: TextStyle(
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 8),
-
-        // Day labels
-        Row(
-          children: ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day) {
-            return Expanded(
-              child: Center(
-                child: Text(
-                  day,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                  ),
-                ),
-              ),
-            );
-          }).toList(),
-        ),
-        const SizedBox(height: 8),
-
-        // Calendar days grid
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 7,
-            mainAxisSpacing: 8,
-            crossAxisSpacing: 8,
-          ),
-          itemCount: 35, // 5 weeks
-          itemBuilder: (context, index) {
-            final dayOffset = index - firstDayOfWeek + 2;
-            if (dayOffset < 1 || dayOffset > daysInMonth) {
-              return const SizedBox();
-            }
-
-            final date = DateTime(
-              _selectedCalendarMonth.year,
-              _selectedCalendarMonth.month,
-              dayOffset,
-            );
-
-            final dateKey = DateFormat('yyyy-MM-dd').format(date);
-            final groupedEntries = _groupEntriesByDate();
-            final hasEntries = groupedEntries.containsKey(dateKey);
-            final isToday = DateFormat('yyyy-MM-dd').format(DateTime.now()) == dateKey;
-
-            // Check if date is selected or in range
-            bool isSelected = false;
-            bool isInRange = false;
-            bool isRangeStart = false;
-            bool isRangeEnd = false;
-
-            if (_selectedStartDate != null) {
-              final startDateKey = DateFormat('yyyy-MM-dd').format(_selectedStartDate!);
-              isRangeStart = dateKey == startDateKey;
-
-              if (_selectedEndDate != null) {
-                final endDateKey = DateFormat('yyyy-MM-dd').format(_selectedEndDate!);
-                isRangeEnd = dateKey == endDateKey;
-                isInRange = date.isAfter(_selectedStartDate!) &&
-                    date.isBefore(_selectedEndDate!);
-              } else {
-                isSelected = isRangeStart;
-              }
-            }
-
-            return GestureDetector(
-              onTap: () {
-                setState(() {
-                  if (_selectedStartDate == null) {
-                    // First selection
-                    _selectedStartDate = date;
-                    _loadDateRange(date, null);
-                  } else if (_selectedEndDate == null) {
-                    // Second selection
-                    if (date.isBefore(_selectedStartDate!)) {
-                      // Swap if selecting earlier date
-                      _selectedEndDate = _selectedStartDate;
-                      _selectedStartDate = date;
-                    } else if (date.isAfter(_selectedStartDate!)) {
-                      _selectedEndDate = date;
-                    } else {
-                      // Same date clicked again - deselect
-                      _selectedStartDate = null;
-                      _loadDateRange(null, null);
-                      return;
-                    }
-                    _loadDateRange(_selectedStartDate, _selectedEndDate);
-                  } else {
-                    // Both dates selected - check which date was tapped
-                    final startDateKey = DateFormat('yyyy-MM-dd').format(
-                        _selectedStartDate!);
-                    final endDateKey = DateFormat('yyyy-MM-dd').format(
-                        _selectedEndDate!);
-                    final tappedDateKey = DateFormat('yyyy-MM-dd').format(date);
-
-                    if (tappedDateKey == startDateKey) {
-                      // Tapped start date - deselect it, keep end as new single selection
-                      _selectedStartDate = _selectedEndDate;
-                      _selectedEndDate = null;
-                      _loadDateRange(_selectedStartDate, null);
-                    } else if (tappedDateKey == endDateKey) {
-                      // Tapped end date - deselect it, keep start as single selection
-                      _selectedEndDate = null;
-                      _loadDateRange(_selectedStartDate, null);
-                    } else {
-                      // Tapped a different date - start new selection
-                      _selectedStartDate = date;
-                      _selectedEndDate = null;
-                      _loadDateRange(date, null);
-                    }
-                  }
-                  });
-                },
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: isRangeStart || isRangeEnd
-                          ? theme.colorScheme.primary
-                          : isInRange
-                          ? theme.colorScheme.primary.withValues(alpha: 0.3)
-                          : isSelected
-                          ? theme.colorScheme.primary.withValues(alpha: 0.5)
-                          : hasEntries
-                          ? theme.colorScheme.primary.withValues(alpha: 0.1)
-                          : isToday
-                          ? theme.colorScheme.secondary.withValues(alpha: 0.1)
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(8),
-                      border: isToday && !isRangeStart && !isRangeEnd ? Border.all(
-                        color: theme.colorScheme.secondary,
-                        width: 2,
-                      ) : null,
-                    ),
-                    child: Center(
-                      child: Text(
-                        dayOffset.toString(),
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: (isRangeStart || isRangeEnd)
-                              ? FontWeight.bold
-                              : hasEntries
-                              ? FontWeight.w600
-                              : FontWeight.normal,
-                          color: (isRangeStart || isRangeEnd)
-                              ? Colors.white
-                              : theme.colorScheme.onSurface,
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-            ],
-            ),
-            );
-          }
-
-          Widget _buildMessageList(
-          ThemeData theme,
-          Map<String, List<MoodEntry>> groupedEntries,
-          List<String> sortedDates,
-        ) {
-    if (widget.moodService.entries.isEmpty) {
-    return _buildEmptyState(theme);
-    }
-
-    // Filter dates based on selection
-    List<String> filteredDates = sortedDates;
-    if (_selectedStartDate != null) {
-    if (_selectedEndDate != null) {
-    // Range selected - filter dates within range
-    filteredDates = sortedDates.where((dateKey) {
-    final date = DateTime.parse(dateKey);
-    return (date.isAtSameMomentAs(_selectedStartDate!) ||
-    date.isAfter(_selectedStartDate!)) &&
-    (date.isAtSameMomentAs(_selectedEndDate!) ||
-    date.isBefore(_selectedEndDate!.add(const Duration(days: 1))));
-    }).toList();
-    } else {
-    // Single date selected
-    final selectedDateKey = DateFormat('yyyy-MM-dd').format(_selectedStartDate!);
-    filteredDates = sortedDates.where((dateKey) => dateKey == selectedDateKey).toList();
-    }
-    }
-
-    // Sort dates in ascending order (oldest first) for chat-style display
-    filteredDates.sort((a, b) => a.compareTo(b));
-
-    // Show a message if no entries in selected range
-    if (filteredDates.isEmpty && (_selectedStartDate != null || _selectedEndDate != null)) {
-    return Center(
-    child: Padding(
-    padding: const EdgeInsets.all(40),
-    child: Column(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: [
-    Icon(
-    Icons.calendar_today_rounded,
-    size: 48,
-    color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
-    ),
-    const SizedBox(height: 16),
-    Text(
-    'No entries found',
-    style: theme.textTheme.titleLarge?.copyWith(
-    fontWeight: FontWeight.bold,
-    ),
-    ),
-    const SizedBox(height: 8),
-    Text(
-    _selectedEndDate != null
-    ? 'No mood entries between\n${DateFormat('MMM d').format(_selectedStartDate!)} and ${DateFormat('MMM d').format(_selectedEndDate!)}'
-        : 'No mood entries on\n${DateFormat('MMMM d, yyyy').format(_selectedStartDate!)}',
-    textAlign: TextAlign.center,
-    style: theme.textTheme.bodyMedium?.copyWith(
-    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-    ),
-    ),
-    ],
-    ),
-    ),
-    );
-    }
-
-    // Scroll to bottom after frame is built to show newest messages (only if no date filter)
-    if (_selectedStartDate == null && _selectedEndDate == null) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-    if (_scrollController.hasClients && !_isJumpingToDate) {
-    _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
-    }
-    });
-    }
-
-    return ListView.builder(
-    controller: _scrollController,
-    padding: const EdgeInsets.only(top: 16, bottom: 16),
-    itemCount: filteredDates.length,
-    itemBuilder: (context, index) {
-    final dateKey = filteredDates[index];
-    final entries = groupedEntries[dateKey]!;
-    final date = DateTime.parse(dateKey);
-
-    // Create a key for this date section
-    _dateKeys[dateKey] = GlobalKey();
-
-    return FadeTransition(
-    key: _dateKeys[dateKey],
-    opacity: _fadeController,
-    child: Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-    // Date header
-    Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-    child: Text(
-    _formatDateHeader(date),
-    style: theme.textTheme.bodySmall?.copyWith(
-    color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-    fontWeight: FontWeight.w600,
-    ),
-    ),
-    ),
-    // Entries for this date (already sorted oldest to newest within the day)
-    ...entries.map((entry) => _buildMessageBubble(theme, entry)),
-    ],
-    ),
-    );
-    },
-    );
-    }
-
-        String _formatDateHeader(DateTime date) {
-      final now = DateTime.now();
-      final difference = now.difference(date).inDays;
-
-      if (difference == 0) return 'Today';
-      if (difference == 1) return 'Yesterday';
-      if (difference < 7) return DateFormat('EEEE').format(date);
-      return DateFormat('MMMM d, yyyy').format(date);
-    }
-
-    Widget _buildMessageBubble(ThemeData theme, MoodEntry entry) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Emoji avatar
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: getMoodColorFromRating(entry.moodRating, widget.themeService.getMoodGradient()).withValues(alpha: 0.2),
-                border: Border.all(
-                  color: getMoodColorFromRating(entry.moodRating, widget.themeService.getMoodGradient()),
-                  width: 2,
-                ),
-              ),
-              child: Center(
-                child: Text(
-                  MoodEntry.getMoodEmoji(entry.moodRating),
-                  style: const TextStyle(fontSize: 24),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-
-            // Message bubble
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surface, // White message bubbles as per design
-                      borderRadius: const BorderRadius.only(
-                        topRight: Radius.circular(16),
-                        bottomLeft: Radius.circular(16),
-                        bottomRight: Radius.circular(16),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.05),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          entry.message,
-                          style: theme.textTheme.bodyMedium,
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: _getMoodColor(entry.moodRating)
-                                    .withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                '${entry.moodRating}/10',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: _getMoodColor(entry.moodRating),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              DateFormat('h:mm a').format(entry.timestamp),
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    Widget _buildEmptyState(ThemeData theme) {
-      return Center(
-        child: FadeTransition(
-          opacity: _fadeController,
-          child: Padding(
-            padding: const EdgeInsets.all(40),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Center(
-                    child: Text('💭', style: TextStyle(fontSize: 40)),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  'No mood entries yet',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Start tracking your mood by\nadding your first entry below',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    Widget _buildInputArea(ThemeData theme) {
-      return Container(
+  Widget _buildInputArea(ThemeData theme) {
+    return GestureDetector(
+      // Prevent taps inside input area from dismissing keyboard
+      onTap: () {},
+      child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: theme.colorScheme.surface, // White surface to match app theme
+          color: theme.colorScheme.surface,
           border: Border(
             top: BorderSide(
               color: theme.dividerColor.withValues(alpha: 0.1),
@@ -1282,138 +1191,154 @@ class _MoodLogScreenState extends State<MoodLogScreen>
             ),
           ],
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              height: _isInputExpanded ? 80 : 0,
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 200),
-                opacity: _isInputExpanded ? 1 : 0,
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          MoodEntry.getMoodEmoji(_currentMoodRating),
-                          style: const TextStyle(fontSize: 32),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Mood slider - animated height
+              ClipRect(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOutCubic,
+                  height: _isInputExpanded ? 80 : 0,
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 200),
+                    opacity: _isInputExpanded ? 1 : 0,
+                    child: _isInputExpanded
+                        ? SingleChildScrollView(
+                      physics: const NeverScrollableScrollPhysics(),
+                      child: SizedBox(
+                        height: 80,
+                        child: Row(
+                          children: [
+                            Text(
+                              MoodEntry.getMoodEmoji(_currentMoodRating),
+                              style: const TextStyle(fontSize: 32),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Text(
-                                    'Mood: $_currentMoodRating/10',
-                                    style: theme.textTheme.bodyMedium?.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 2,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: _getMoodColor(_currentMoodRating)
-                                          .withValues(alpha: 0.2),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Text(
-                                      MoodEntry.getMoodLabel(_currentMoodRating),
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        color: _getMoodColor(_currentMoodRating),
+                                  Row(
+                                    children: [
+                                      Text(
+                                        'Mood: $_currentMoodRating/10',
+                                        style: theme.textTheme.bodyMedium?.copyWith(
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                       ),
+                                      const SizedBox(width: 12),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: _getMoodColor(_currentMoodRating)
+                                              .withValues(alpha: 0.2),
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          MoodEntry.getMoodLabel(_currentMoodRating),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: _getMoodColor(_currentMoodRating),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  SliderTheme(
+                                    data: SliderTheme.of(context).copyWith(
+                                      activeTrackColor: _getMoodColor(_currentMoodRating),
+                                      inactiveTrackColor: _getMoodColor(_currentMoodRating)
+                                          .withValues(alpha: 0.2),
+                                      thumbColor: _getMoodColor(_currentMoodRating),
+                                      overlayColor: _getMoodColor(_currentMoodRating)
+                                          .withValues(alpha: 0.3),
+                                      trackHeight: 4.0,
+                                      thumbShape: const RoundSliderThumbShape(
+                                        enabledThumbRadius: 10.0,
+                                      ),
+                                      overlayShape: const RoundSliderOverlayShape(
+                                        overlayRadius: 20.0,
+                                      ),
+                                    ),
+                                    child: Slider(
+                                      value: _currentMoodRating.toDouble(),
+                                      min: 1,
+                                      max: 10,
+                                      divisions: 9,
+                                      onChanged: (value) {
+                                        setState(() {
+                                          _currentMoodRating = value.round();
+                                        });
+                                        HapticFeedback.selectionClick();
+                                      },
                                     ),
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 8),
-                              SliderTheme(
-                                data: SliderTheme.of(context).copyWith(
-                                  activeTrackColor: _getMoodColor(_currentMoodRating),
-                                  inactiveTrackColor: _getMoodColor(_currentMoodRating)
-                                      .withValues(alpha: 0.2),
-                                  thumbColor: _getMoodColor(_currentMoodRating),
-                                  overlayColor: _getMoodColor(_currentMoodRating)
-                                      .withValues(alpha: 0.3),
-                                ),
-                                child: Slider(
-                                  value: _currentMoodRating.toDouble(),
-                                  min: 1,
-                                  max: 10,
-                                  divisions: 9,
-                                  onChanged: (value) {
-                                    setState(() {
-                                      _currentMoodRating = value.round();
-                                    });
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                  ],
+                      ),
+                    )
+                        : const SizedBox.shrink(),
+                  ),
                 ),
               ),
-            ),
 
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _messageController,
-                    decoration: InputDecoration(
-                      hintText: 'How are you feeling?',
-                      filled: true,
-                      fillColor: theme.colorScheme.onSurface.withValues(alpha: 0.05),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(24),
-                        borderSide: BorderSide.none,
+              // Text input row
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _messageController,
+                      decoration: InputDecoration(
+                        hintText: 'How are you feeling?',
+                        filled: true,
+                        fillColor: theme.colorScheme.onSurface.withValues(alpha: 0.05),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(24),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
                       ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 12,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => _sendMessage(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          theme.colorScheme.primary,
+                          theme.colorScheme.secondary,
+                        ],
                       ),
+                      shape: BoxShape.circle,
                     ),
-                    onTap: () {
-                      setState(() {
-                        _isInputExpanded = true;
-                      });
-                    },
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _sendMessage(),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        theme.colorScheme.primary,
-                        theme.colorScheme.secondary,
-                      ],
+                    child: IconButton(
+                      onPressed: _sendMessage,
+                      icon: const Icon(Icons.send_rounded),
+                      color: theme.colorScheme.surface,
                     ),
-                    shape: BoxShape.circle,
                   ),
-                  child: IconButton(
-                    onPressed: _sendMessage,
-                    icon: const Icon(Icons.send_rounded),
-                    color: theme.colorScheme.surface,
-                  ),
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         ),
-      );
-    }
+      ),
+    );
   }
+}
