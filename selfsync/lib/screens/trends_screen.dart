@@ -1,5 +1,6 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:fl_chart/fl_chart.dart';
 import '../models/mood_entry.dart';
 import '../services/mood_service.dart';
 import '../widgets/side_drawer.dart';
@@ -26,6 +27,8 @@ class TrendsScreen extends StatefulWidget {
 
 class _TrendsScreenState extends State<TrendsScreen> {
   String _selectedRange = '7D';
+  final PageController _distributionPageController = PageController();
+  int _currentDistributionPage = 0;
 
   @override
   void initState() {
@@ -38,6 +41,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
   @override
   void dispose() {
     widget.moodService.removeListener(_onMoodServiceUpdate);
+    _distributionPageController.dispose();
     AppLogger.lifecycle('Stopped listening to MoodService updates', tag: 'TrendsScreen');
     super.dispose();
   }
@@ -95,7 +99,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
       );
     }
     AppLogger.separator();
-    
+
     // Always check the TOTAL entries, not just filtered
     final hasAnyData = widget.moodService.entries.isNotEmpty;
 
@@ -943,7 +947,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
               Text(
                 'Less',
                 style: TextStyle(
-                  fontSize: 10, 
+                  fontSize: 10,
                   color: theme.colorScheme.onSurface.withValues(alpha: 0.7),),
               ),
               const SizedBox(width: 6),
@@ -960,7 +964,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
               Text(
                 'More',
                 style: TextStyle(
-                  fontSize: 10, 
+                  fontSize: 10,
                   color: theme.colorScheme.onSurface.withValues(alpha: 0.7),),
               ),
             ],
@@ -1210,6 +1214,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
     final total = entries.length;
 
     return Container(
+      height: 420,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
@@ -1242,53 +1247,182 @@ class _TrendsScreenState extends State<TrendsScreen> {
             ],
           ),
           const SizedBox(height: 20),
-          ...distribution.entries.map((entry) {
-            final percentage = ((entry.value / total) * 100).toStringAsFixed(0);
-            final label = entry.key.split(' ')[0]; // Get just the mood label
-            final color = _getMoodColor(label);
+          Expanded(
+            child: PageView(
+              controller: _distributionPageController,
+              onPageChanged: (index) {
+                setState(() {
+                  _currentDistributionPage = index;
+                });
+              },
+              children: [
+                _buildDistributionList(theme, distribution, total),
+                _buildPieChart(theme, distribution, total),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          _buildPageIndicator(theme),
+        ],
+      ),
+    );
+  }
 
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildDistributionList(
+      ThemeData theme,
+      Map<String, int> distribution,
+      int total,
+      ) {
+    return ListView(
+      padding: EdgeInsets.zero,
+      children: distribution.entries.map((entry) {
+        final percentage = ((entry.value / total) * 100).toStringAsFixed(0);
+        final label = entry.key.split(' ')[0];
+        final color = _getMoodColor(label);
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        entry.key,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
-                        ),
-                      ),
-                      Text(
-                        '$percentage%',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: color,
-                        ),
-                      ),
-                    ],
+                  Text(
+                    entry.key,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
+                    ),
                   ),
-                  const SizedBox(height: 6),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: entry.value / total,
-                      minHeight: 8,
-                      backgroundColor: theme.scaffoldBackgroundColor,
-                      valueColor: AlwaysStoppedAnimation<Color>(color),
+                  Text(
+                    '$percentage%',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: color,
                     ),
                   ),
                 ],
               ),
+              const SizedBox(height: 6),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: entry.value / total,
+                  minHeight: 8,
+                  backgroundColor: theme.scaffoldBackgroundColor,
+                  valueColor: AlwaysStoppedAnimation<Color>(color),
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildPieChart(
+      ThemeData theme,
+      Map<String, int> distribution,
+      int total,
+      ) {
+    final sections = distribution.entries.where((e) => e.value > 0).map((entry) {
+      final label = entry.key.split(' ')[0];
+      final color = _getMoodColor(label);
+      final percentage = (entry.value / total) * 100;
+
+      return PieChartSectionData(
+        color: color,
+        value: entry.value.toDouble(),
+        title: '${percentage.toStringAsFixed(0)}%',
+        radius: 100,
+        titleStyle: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+          shadows: [
+            Shadow(
+              color: Colors.black.withValues(alpha: 0.3),
+              blurRadius: 2,
+            ),
+          ],
+        ),
+      );
+    }).toList();
+
+    return Column(
+      children: [
+        Expanded(
+          child: PieChart(
+            PieChartData(
+              sections: sections,
+              sectionsSpace: 2,
+              centerSpaceRadius: 0,
+              startDegreeOffset: -90,
+              pieTouchData: PieTouchData(
+                touchCallback: (FlTouchEvent event, pieTouchResponse) {
+                  setState(() {});
+                },
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+        Wrap(
+          spacing: 16,
+          runSpacing: 8,
+          alignment: WrapAlignment.center,
+          children: distribution.entries.where((e) => e.value > 0).map((entry) {
+            final label = entry.key.split(' ')[0];
+            final color = _getMoodColor(label);
+
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  entry.key,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+                  ),
+                ),
+              ],
             );
-          }),
-        ],
-      ),
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPageIndicator(ThemeData theme) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(2, (index) {
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          width: _currentDistributionPage == index ? 20 : 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: _currentDistributionPage == index
+                ? theme.colorScheme.primary
+                : theme.colorScheme.onSurface.withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(4),
+          ),
+        );
+      }),
     );
   }
 

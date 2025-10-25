@@ -32,6 +32,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
   int _currentMoodRating = 5;
   bool _isInputExpanded = false;
   bool _isKeyboardVisible = false;
+  bool _showScrollToBottomButton = false;
   late AnimationController _fadeController;
   late AnimationController _calendarExpandController;
 
@@ -58,6 +59,9 @@ class _MoodLogScreenState extends State<MoodLogScreen>
 
   // Date navigation
   final Map<String, GlobalKey> _dateKeys = {};
+
+  // Calendar mood data cache - stores multiple months
+  final Map<String, Map<int, double>> _cachedDayMoodMap = {};
 
   @override
   void initState() {
@@ -121,6 +125,25 @@ class _MoodLogScreenState extends State<MoodLogScreen>
 
     widget.moodService.addListener(_onMoodServiceUpdate);
     AppLogger.debug('Listening to MoodService updates', tag: 'MoodLog');
+
+    // Add scroll listener to detect if user is at bottom
+    _scrollController.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
+    final threshold = 200.0; // Show button if more than 200px from bottom
+
+    final shouldShow = (maxScroll - currentScroll) > threshold;
+
+    if (shouldShow != _showScrollToBottomButton) {
+      setState(() {
+        _showScrollToBottomButton = shouldShow;
+      });
+    }
   }
 
   void _calculateAvailableDates() {
@@ -153,28 +176,6 @@ class _MoodLogScreenState extends State<MoodLogScreen>
     }).toList()..sort((a, b) => b.compareTo(a)); // Newest first
 
     _availableYears = yearsSet.toList()..sort((a, b) => b.compareTo(a));
-  }
-
-  void _showMonthPicker() {
-    HapticFeedback.lightImpact();
-    AppLogger.debug('Opening month picker', tag: 'MoodLog.Calendar');
-    setState(() {
-      _isMonthPickerVisible = true;
-      _isYearPickerVisible = false;
-    });
-    _monthPickerController.forward();
-    _yearPickerController.reverse();
-  }
-
-  void _showYearPicker() {
-    HapticFeedback.lightImpact();
-    AppLogger.debug('Opening year picker', tag: 'MoodLog.Calendar');
-    setState(() {
-      _isYearPickerVisible = true;
-      _isMonthPickerVisible = false;
-    });
-    _yearPickerController.forward();
-    _monthPickerController.reverse();
   }
 
   void _closePickers() {
@@ -240,6 +241,9 @@ class _MoodLogScreenState extends State<MoodLogScreen>
   void _onMoodServiceUpdate() {
     AppLogger.debug('MoodService update received, recalculating dates', tag: 'MoodLog');
     _calculateAvailableDates();
+    // Clear cached mood data when service updates
+    _cachedDayMoodMap.clear();
+    AppLogger.info('Cleared mood data cache', tag: 'MoodLog.Calendar');
     if (mounted) setState(() {});
   }
 
@@ -351,27 +355,64 @@ class _MoodLogScreenState extends State<MoodLogScreen>
         resizeToAvoidBottomInset: true,
         backgroundColor: theme.scaffoldBackgroundColor,
         body: SafeArea(
-          child: Column(
+          child: Stack(
             children: [
-              _buildHeader(theme),
+              Column(
+                children: [
+                  _buildHeader(theme),
 
-              // Calendar area
-              SizeTransition(
-                sizeFactor: CurvedAnimation(
-                  parent: _calendarExpandController,
-                  curve: Curves.easeInOutCubic,
+                  // Calendar area
+                  SizeTransition(
+                    sizeFactor: CurvedAnimation(
+                      parent: _calendarExpandController,
+                      curve: Curves.easeInOutCubic,
+                    ),
+                    child: _buildCalendarArea(theme),
+                  ),
+
+                  // Main content
+                  Expanded(
+                    child: _buildMessageList(theme),
+                  ),
+
+                  // Input area - only show for current day
+                  if (isToday)
+                    _buildInputArea(theme),
+                ],
+              ),
+
+              // Scroll to bottom button
+              if (_showScrollToBottomButton && isToday)
+                Positioned(
+                  bottom: 90, // Just above the input area
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Material(
+                      elevation: 4,
+                      borderRadius: BorderRadius.circular(20),
+                      color: theme.colorScheme.primary,
+                      child: InkWell(
+                        onTap: () {
+                          _scrollController.animateTo(
+                            _scrollController.position.maxScrollExtent,
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeOutCubic,
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          child: Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            color: theme.colorScheme.onPrimary,
+                            size: 28,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-                child: _buildCalendarArea(theme),
-              ),
-
-              // Main content
-              Expanded(
-                child: _buildMessageList(theme),
-              ),
-
-              // Input area - only show for current day
-              if (isToday)
-                _buildInputArea(theme),
             ],
           ),
         ),
@@ -463,49 +504,52 @@ class _MoodLogScreenState extends State<MoodLogScreen>
   }
 
   Widget _buildCalendarArea(ThemeData theme) {
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
+    return Stack(
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Column(
-        children: [
-          // Month/Year selector
-          _buildMonthYearSelector(theme),
+          child: Column(
+            children: [
+              // Month/Year selector
+              _buildMonthYearSelector(theme),
 
-          // Month picker
-          SizeTransition(
-            sizeFactor: CurvedAnimation(
-              parent: _monthPickerController,
-              curve: Curves.easeInOutCubic,
-            ),
-            child: _isMonthPickerVisible ? _buildMonthPicker(theme) : const SizedBox.shrink(),
+              // Calendar grid (always show, pickers overlay it)
+              _buildCalendarGrid(theme),
+
+              // Selected date range display
+              if (_selectedStartDate != null)
+                _buildSelectedDateDisplay(theme),
+            ],
+          ),
+        ),
+
+        // Month picker overlay
+        if (_isMonthPickerVisible)
+          Positioned(
+            top: 50,
+            left: 16,
+            right: 16,
+            child: _buildMonthPicker(theme),
           ),
 
-          // Year picker
-          SizeTransition(
-            sizeFactor: CurvedAnimation(
-              parent: _yearPickerController,
-              curve: Curves.easeInOutCubic,
-            ),
-            child: _isYearPickerVisible ? _buildYearPicker(theme) : const SizedBox.shrink(),
+        // Year picker overlay
+        if (_isYearPickerVisible)
+          Positioned(
+            top: 50,
+            left: 16,
+            right: 16,
+            child: _buildYearPicker(theme),
           ),
-
-          // Calendar grid
-          if (!_isMonthPickerVisible && !_isYearPickerVisible)
-            _buildCalendarGrid(theme),
-
-          // Selected date range display
-          if (_selectedStartDate != null)
-            _buildSelectedDateDisplay(theme),
-        ],
-      ),
+      ],
     );
   }
 
@@ -513,228 +557,344 @@ class _MoodLogScreenState extends State<MoodLogScreen>
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Month selector button
-          GestureDetector(
-            onTap: () {
-              FocusScope.of(context).unfocus();
-              setState(() {
-                _isInputExpanded = false;
-              });
-              _showMonthPicker();
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: _isMonthPickerVisible
-                    ? theme.colorScheme.primary.withValues(alpha: 0.1)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    DateFormat('MMMM').format(_selectedCalendarMonth),
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: _isMonthPickerVisible
-                          ? theme.colorScheme.primary
-                          : null,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(
-                    _isMonthPickerVisible ? Icons.expand_less_rounded : Icons.expand_more_rounded,
-                    color: _isMonthPickerVisible
-                        ? theme.colorScheme.primary
-                        : null,
-                  ),
-                ],
-              ),
+          // Left arrow
+          IconButton(
+            icon: Icon(
+              Icons.chevron_left_rounded,
+              color: theme.colorScheme.primary,
             ),
+            onPressed: () {
+              setState(() {
+                _selectedCalendarMonth = DateTime(
+                  _selectedCalendarMonth.year,
+                  _selectedCalendarMonth.month - 1,
+                );
+              });
+            },
           ),
 
-          // Year selector button
-          GestureDetector(
-            onTap: () {
-              FocusScope.of(context).unfocus();
-              setState(() {
-                _isInputExpanded = false;
-              });
-              _showYearPicker();
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: _isYearPickerVisible
-                    ? theme.colorScheme.primary.withValues(alpha: 0.1)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '${_selectedCalendarMonth.year}',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: _isYearPickerVisible
-                          ? theme.colorScheme.primary
-                          : null,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(
-                    _isYearPickerVisible ? Icons.expand_less_rounded : Icons.expand_more_rounded,
-                    color: _isYearPickerVisible
-                        ? theme.colorScheme.primary
-                        : null,
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // Close picker button
-          if (_isMonthPickerVisible || _isYearPickerVisible)
-            IconButton(
-              onPressed: () {
+          // Month button
+          Expanded(
+            child: GestureDetector(
+              onTap: () {
                 FocusScope.of(context).unfocus();
                 setState(() {
                   _isInputExpanded = false;
+                  _isMonthPickerVisible = !_isMonthPickerVisible;
+                  if (_isMonthPickerVisible) {
+                    _isYearPickerVisible = false;
+                    _monthPickerController.forward();
+                    _yearPickerController.reverse();
+                  } else {
+                    _monthPickerController.reverse();
+                  }
                 });
-                _closePickers();
               },
-              icon: const Icon(Icons.close_rounded),
-              tooltip: 'Close picker',
-            )
-          else
-            const SizedBox(width: 48),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: _isMonthPickerVisible
+                      ? theme.colorScheme.primary.withValues(alpha: 0.15)
+                      : theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: _isMonthPickerVisible
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurface.withValues(alpha: 0.2),
+                    width: 1.5,
+                  ),
+                ),
+                child: Text(
+                  DateFormat('MMMM').format(_selectedCalendarMonth),
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: _isMonthPickerVisible
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurface,
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 8),
+
+          // Year button
+          Expanded(
+            child: GestureDetector(
+              onTap: () {
+                FocusScope.of(context).unfocus();
+                setState(() {
+                  _isInputExpanded = false;
+                  _isYearPickerVisible = !_isYearPickerVisible;
+                  if (_isYearPickerVisible) {
+                    _isMonthPickerVisible = false;
+                    _yearPickerController.forward();
+                    _monthPickerController.reverse();
+                  } else {
+                    _yearPickerController.reverse();
+                  }
+                });
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: _isYearPickerVisible
+                      ? theme.colorScheme.primary.withValues(alpha: 0.15)
+                      : theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: _isYearPickerVisible
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurface.withValues(alpha: 0.2),
+                    width: 1.5,
+                  ),
+                ),
+                child: Text(
+                  '${_selectedCalendarMonth.year}',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: _isYearPickerVisible
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurface,
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // Right arrow
+          IconButton(
+            icon: Icon(
+              Icons.chevron_right_rounded,
+              color: theme.colorScheme.primary,
+            ),
+            onPressed: () {
+              setState(() {
+                _selectedCalendarMonth = DateTime(
+                  _selectedCalendarMonth.year,
+                  _selectedCalendarMonth.month + 1,
+                );
+              });
+            },
+          ),
+
+          // Clear button (only show if date range selected)
+          if (_selectedStartDate != null || _selectedEndDate != null)
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _selectedStartDate = null;
+                  _selectedEndDate = null;
+                });
+                _loadDateRange(null, null);
+              },
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+              ),
+              child: Text(
+                'Clear',
+                style: TextStyle(
+                  color: theme.colorScheme.error,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 
   Widget _buildMonthPicker(ThemeData theme) {
-    return Container(
-      height: 200,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: ListWheelScrollView.useDelegate(
-        controller: _monthScrollController,
-        itemExtent: 50,
-        perspective: 0.005,
-        diameterRatio: 1.2,
-        physics: const FixedExtentScrollPhysics(),
-        childDelegate: ListWheelChildBuilderDelegate(
-          builder: (context, index) {
-            if (index < 0 || index >= _availableMonths.length) return null;
-            final month = _availableMonths[index];
-            final isSelected = month.month == _selectedCalendarMonth.month &&
-                month.year == _selectedCalendarMonth.year;
+    return Material(
+      elevation: 8,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        height: 200,
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: theme.colorScheme.primary.withValues(alpha: 0.3),
+            width: 1.5,
+          ),
+        ),
+        child: ListWheelScrollView(
+          controller: FixedExtentScrollController(
+            initialItem: _selectedCalendarMonth.month - 1,
+          ),
+          itemExtent: 50,
+          diameterRatio: 1.5,
+          physics: const FixedExtentScrollPhysics(),
+          onSelectedItemChanged: (index) {
+            AppLogger.debug('Month wheel scrolled to index: $index', tag: 'MoodLog.Calendar');
+            HapticFeedback.selectionClick();
+            setState(() {
+              _selectedCalendarMonth = DateTime(
+                _selectedCalendarMonth.year,
+                index + 1,
+              );
+            });
+          },
+          children: List.generate(12, (index) {
+            final month = DateTime(_selectedCalendarMonth.year, index + 1);
+            final isSelected = index == _selectedCalendarMonth.month - 1;
 
-            return GestureDetector(
-              onTap: () {
-                HapticFeedback.selectionClick();
-                setState(() {
-                  _selectedCalendarMonth = month;
-                  _closePickers();
-                });
-              },
-              child: Center(
-                child: Text(
-                  DateFormat('MMMM yyyy').format(month),
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                    color: isSelected
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                  ),
+            return Center(
+              child: Text(
+                DateFormat('MMMM').format(month),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  color: isSelected
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  fontSize: isSelected ? 18 : 16,
                 ),
               ),
             );
-          },
-          childCount: _availableMonths.length,
+          }),
         ),
       ),
     );
   }
 
   Widget _buildYearPicker(ThemeData theme) {
-    return Container(
-      height: 200,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: ListWheelScrollView.useDelegate(
-        controller: _yearScrollController,
-        itemExtent: 50,
-        perspective: 0.005,
-        diameterRatio: 1.2,
-        physics: const FixedExtentScrollPhysics(),
-        childDelegate: ListWheelChildBuilderDelegate(
-          builder: (context, index) {
-            if (index < 0 || index >= _availableYears.length) return null;
-            final year = _availableYears[index];
+    final currentYear = DateTime.now().year;
+
+    // Get earliest year from mood data, or use 2020 as fallback
+    final earliestYear = widget.moodService.entries.isEmpty
+        ? currentYear - 10
+        : widget.moodService.entries.map((e) => e.timestamp.year).reduce((a, b) => a < b ? a : b);
+
+    // Only years from earliest data year to current year (no future)
+    final years = List.generate(
+      currentYear - earliestYear + 1,
+          (i) => earliestYear + i,
+    );
+
+    final initialIndex = years.indexOf(_selectedCalendarMonth.year);
+
+    return Material(
+      elevation: 8,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        height: 200,
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: theme.colorScheme.primary.withValues(alpha: 0.3),
+            width: 1.5,
+          ),
+        ),
+        child: ListWheelScrollView(
+          controller: FixedExtentScrollController(
+            initialItem: initialIndex >= 0 ? initialIndex : years.length - 1,
+          ),
+          itemExtent: 50,
+          diameterRatio: 1.5,
+          physics: const FixedExtentScrollPhysics(),
+          onSelectedItemChanged: (index) {
+            AppLogger.debug('Year wheel scrolled to: ${years[index]}', tag: 'MoodLog.Calendar');
+            HapticFeedback.selectionClick();
+            setState(() {
+              _selectedCalendarMonth = DateTime(
+                years[index],
+                _selectedCalendarMonth.month,
+              );
+            });
+          },
+          children: List.generate(years.length, (index) {
+            final year = years[index];
             final isSelected = year == _selectedCalendarMonth.year;
 
-            return GestureDetector(
-              onTap: () {
-                HapticFeedback.selectionClick();
-                setState(() {
-                  _selectedCalendarMonth = DateTime(_availableYears[index], _selectedCalendarMonth.month);
-                  _closePickers();
-                });
-              },
-              child: Center(
-                child: Text(
-                  '$year',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                    color: isSelected
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                  ),
+            return Center(
+              child: Text(
+                '$year',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  color: isSelected
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  fontSize: isSelected ? 18 : 16,
                 ),
               ),
             );
-          },
-          childCount: _availableYears.length,
+          }),
         ),
       ),
     );
   }
 
-  Widget _buildCalendarGrid(ThemeData theme) {
-    final firstDayOfMonth = DateTime(_selectedCalendarMonth.year, _selectedCalendarMonth.month, 1);
-    final lastDayOfMonth = DateTime(_selectedCalendarMonth.year, _selectedCalendarMonth.month + 1, 0);
-    final daysInMonth = lastDayOfMonth.day;
-    final startingWeekday = firstDayOfMonth.weekday % 7;
+  Map<int, double> _getDayMoodMapForMonth() {
+    final monthKey = '${_selectedCalendarMonth.year}-${_selectedCalendarMonth.month}';
 
-    // Get mood entries for this month
+    AppLogger.debug('Getting mood data for month: $monthKey', tag: 'MoodLog.Calendar');
+
+    // Return cached data if available
+    if (_cachedDayMoodMap.containsKey(monthKey)) {
+      AppLogger.success('Using cached mood data for $monthKey', tag: 'MoodLog.Calendar');
+      return _cachedDayMoodMap[monthKey]!;
+    }
+
+    AppLogger.warning('Cache miss - calculating mood data for $monthKey', tag: 'MoodLog.Calendar');
+    final startTime = DateTime.now();
+
+    // Calculate mood data for this month
     final monthEntries = widget.moodService.entries.where((entry) {
       return entry.timestamp.year == _selectedCalendarMonth.year &&
           entry.timestamp.month == _selectedCalendarMonth.month;
     }).toList();
 
-    // Create a map of day -> average mood
+    AppLogger.data('Entries found', details: '${monthEntries.length}', tag: 'MoodLog.Calendar');
+
     final dayMoodMap = <int, double>{};
+    final dayCountMap = <int, int>{};
+
     for (var entry in monthEntries) {
       final day = entry.timestamp.day;
-      if (!dayMoodMap.containsKey(day)) {
-        dayMoodMap[day] = 0;
-      }
-      dayMoodMap[day] = dayMoodMap[day]! + entry.moodRating;
+      dayMoodMap[day] = (dayMoodMap[day] ?? 0) + entry.moodRating;
+      dayCountMap[day] = (dayCountMap[day] ?? 0) + 1;
     }
 
     // Calculate averages
-    final dayCountMap = <int, int>{};
-    for (var entry in monthEntries) {
-      final day = entry.timestamp.day;
-      dayCountMap[day] = (dayCountMap[day] ?? 0) + 1;
-    }
     for (var day in dayMoodMap.keys) {
       dayMoodMap[day] = dayMoodMap[day]! / dayCountMap[day]!;
     }
+
+    final duration = DateTime.now().difference(startTime).inMilliseconds;
+    AppLogger.info('Mood calculation took ${duration}ms', tag: 'MoodLog.Calendar');
+
+    // Cache the result (store multiple months, limit to 12 months to avoid memory issues)
+    _cachedDayMoodMap[monthKey] = dayMoodMap;
+    if (_cachedDayMoodMap.length > 12) {
+      // Remove oldest entry
+      final oldestKey = _cachedDayMoodMap.keys.first;
+      _cachedDayMoodMap.remove(oldestKey);
+      AppLogger.debug('Removed oldest cache entry: $oldestKey', tag: 'MoodLog.Calendar');
+    }
+
+    return dayMoodMap;
+  }
+
+  Widget _buildCalendarGrid(ThemeData theme) {
+    AppLogger.debug('Building calendar grid', tag: 'MoodLog.Calendar');
+    final buildStart = DateTime.now();
+
+    final firstDayOfMonth = DateTime(_selectedCalendarMonth.year, _selectedCalendarMonth.month, 1);
+    final lastDayOfMonth = DateTime(_selectedCalendarMonth.year, _selectedCalendarMonth.month + 1, 0);
+    final daysInMonth = lastDayOfMonth.day;
+    final startingWeekday = firstDayOfMonth.weekday % 7;
+    final now = DateTime.now();
+
+    // Get cached mood data
+    final dayMoodMap = _getDayMoodMapForMonth();
+
+    final buildDuration = DateTime.now().difference(buildStart).inMilliseconds;
+    AppLogger.info('Calendar grid build took ${buildDuration}ms', tag: 'MoodLog.Calendar');
 
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -778,9 +938,9 @@ class _MoodLogScreenState extends State<MoodLogScreen>
               }
 
               final date = DateTime(_selectedCalendarMonth.year, _selectedCalendarMonth.month, dayNumber);
-              final isToday = date.year == DateTime.now().year &&
-                  date.month == DateTime.now().month &&
-                  date.day == DateTime.now().day;
+              final isToday = date.year == now.year &&
+                  date.month == now.month &&
+                  date.day == now.day;
               final hasMoodData = dayMoodMap.containsKey(dayNumber);
               final avgMood = dayMoodMap[dayNumber];
 
@@ -792,7 +952,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
               final isInRange = _selectedStartDate != null &&
                   _selectedEndDate != null &&
                   date.isAfter(_selectedStartDate!) &&
-                  date.isBefore(_selectedEndDate!);
+                  !date.isAfter(_selectedEndDate!);
 
               return GestureDetector(
                 onTap: () {
