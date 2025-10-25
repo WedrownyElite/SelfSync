@@ -209,6 +209,9 @@ class _MainScreenState extends State<MainScreen> {
     return DrawerWrapper(
       controller: _drawerController,
       onSettingsTap: _navigateToSettings,
+      onCalendarTap: () => _onNavigationTap(0), // Navigate to Calendar
+      onDiaryTap: () => _onNavigationTap(1),    // Navigate to Diary/Mood Log
+      onTrendsTap: () => _onNavigationTap(2),   // Navigate to Trends
       child: Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         body: _buildScreen(),

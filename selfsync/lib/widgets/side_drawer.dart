@@ -1,15 +1,24 @@
-﻿import 'package:flutter/material.dart';
+﻿// ignore_for_file: avoid_print
+import 'package:flutter/material.dart';
+import '../utils/app_logger.dart';
+import '../screens/help_screen.dart';
 
 /// A custom side drawer that slides in from the left side of the screen
 /// Occupies 1/4 of screen width with smooth animation
 class SideDrawer extends StatelessWidget {
   final VoidCallback onClose;
   final VoidCallback? onSettingsTap;
+  final VoidCallback? onCalendarTap;
+  final VoidCallback? onDiaryTap;
+  final VoidCallback? onTrendsTap;
 
   const SideDrawer({
     super.key,
     required this.onClose,
     this.onSettingsTap,
+    this.onCalendarTap,
+    this.onDiaryTap,
+    this.onTrendsTap,
   });
 
   @override
@@ -52,7 +61,7 @@ class SideDrawer extends StatelessWidget {
 
               // Drawer content
               Expanded(
-                child: _buildContent(theme),
+                child: _buildContent(theme, context),
               ),
 
               // Footer
@@ -125,24 +134,17 @@ class SideDrawer extends StatelessWidget {
     );
   }
 
-  Widget _buildContent(ThemeData theme) {
+  Widget _buildContent(ThemeData theme, BuildContext context) {
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 8),
       children: [
         _buildMenuItem(
-          icon: Icons.home_rounded,
-          title: 'Home',
-          onTap: () {
-            // TODO: Navigate to home
-            onClose();
-          },
-          theme: theme,
-        ),
-        _buildMenuItem(
           icon: Icons.calendar_month_rounded,
           title: 'Calendar',
           onTap: () {
-            // TODO: Navigate to calendar
+            if (onCalendarTap != null) {
+              onCalendarTap!();
+            }
             onClose();
           },
           theme: theme,
@@ -151,7 +153,9 @@ class SideDrawer extends StatelessWidget {
           icon: Icons.edit_note_rounded,
           title: 'Diary',
           onTap: () {
-            // TODO: Navigate to diary
+            if (onDiaryTap != null) {
+              onDiaryTap!();
+            }
             onClose();
           },
           theme: theme,
@@ -160,7 +164,9 @@ class SideDrawer extends StatelessWidget {
           icon: Icons.insights_rounded,
           title: 'Trends',
           onTap: () {
-            // TODO: Navigate to trends
+            if (onTrendsTap != null) {
+              onTrendsTap!();
+            }
             onClose();
           },
           theme: theme,
@@ -184,7 +190,13 @@ class SideDrawer extends StatelessWidget {
           icon: Icons.help_outline_rounded,
           title: 'Help',
           onTap: () {
-            // TODO: Show help
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => HelpScreen(
+                  drawerController: SideDrawerController(),
+                ),
+              ),
+            );
             onClose();
           },
           theme: theme,
@@ -253,18 +265,24 @@ class SideDrawerController extends ChangeNotifier {
   bool get isOpen => _isOpen;
 
   void open() {
+    AppLogger.info('Opening drawer', tag: 'SideDrawerController');
     _isOpen = true;
     notifyListeners();
+    AppLogger.success('Drawer opened, listeners notified', tag: 'SideDrawerController');
   }
 
   void close() {
+    AppLogger.info('Closing drawer', tag: 'SideDrawerController');
     _isOpen = false;
     notifyListeners();
+    AppLogger.success('Drawer closed, listeners notified', tag: 'SideDrawerController');
   }
 
   void toggle() {
+    AppLogger.info('Toggling drawer', tag: 'SideDrawerController');
     _isOpen = !_isOpen;
     notifyListeners();
+    AppLogger.success('Drawer toggled to ${_isOpen ? "OPEN" : "CLOSED"}', tag: 'SideDrawerController');
   }
 }
 
@@ -274,12 +292,18 @@ class DrawerWrapper extends StatefulWidget {
   final Widget child;
   final SideDrawerController? controller;
   final VoidCallback? onSettingsTap;
+  final VoidCallback? onCalendarTap;
+  final VoidCallback? onDiaryTap;
+  final VoidCallback? onTrendsTap;
 
   const DrawerWrapper({
     super.key,
     required this.child,
     this.controller,
     this.onSettingsTap,
+    this.onCalendarTap,
+    this.onDiaryTap,
+    this.onTrendsTap,
   });
 
   @override
@@ -296,6 +320,8 @@ class _DrawerWrapperState extends State<DrawerWrapper>
   void initState() {
     super.initState();
 
+    AppLogger.lifecycle('DrawerWrapper initializing', tag: 'DrawerWrapper');
+
     _controller = widget.controller ?? SideDrawerController();
     _controller.addListener(_handleDrawerStateChange);
 
@@ -311,51 +337,139 @@ class _DrawerWrapperState extends State<DrawerWrapper>
       parent: _animationController,
       curve: Curves.easeOutCubic,
     ));
+
+    AppLogger.success('DrawerWrapper initialized', tag: 'DrawerWrapper');
   }
 
   @override
   void dispose() {
+    AppLogger.lifecycle('DrawerWrapper disposing', tag: 'DrawerWrapper');
     _controller.removeListener(_handleDrawerStateChange);
     _animationController.dispose();
     super.dispose();
   }
 
   void _handleDrawerStateChange() {
+    AppLogger.info(
+      'Drawer state changed: ${_controller.isOpen ? "OPEN" : "CLOSED"}',
+      tag: 'DrawerWrapper',
+    );
+
     if (_controller.isOpen) {
+      AppLogger.debug('Animating drawer FORWARD (opening)', tag: 'DrawerWrapper');
       _animationController.forward();
     } else {
+      AppLogger.debug('Animating drawer REVERSE (closing)', tag: 'DrawerWrapper');
       _animationController.reverse();
+    }
+
+    // CRITICAL: Force rebuild to show/hide overlay
+    if (mounted) {
+      AppLogger.debug('🔄 Calling setState to rebuild with overlay', tag: 'DrawerWrapper');
+      setState(() {});
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final drawerWidth = screenWidth < 400
+        ? screenWidth * 0.7
+        : screenWidth < 600
+        ? screenWidth * 0.5
+        : screenWidth * 0.25;
+
+    AppLogger.debug(
+      'Building DrawerWrapper - Drawer is ${_controller.isOpen ? "OPEN" : "CLOSED"}',
+      tag: 'DrawerWrapper',
+    );
+    AppLogger.debug('Screen width: $screenWidth, Drawer width: $drawerWidth', tag: 'DrawerWrapper');
+
+    if (_controller.isOpen) {
+      AppLogger.debug('✅ Rendering overlay (drawer is open)', tag: 'DrawerWrapper');
+    } else {
+      AppLogger.debug('❌ Overlay NOT rendered (drawer is closed)', tag: 'DrawerWrapper');
+    }
+
     return Stack(
       children: [
         // Main content
         widget.child,
 
-        // Overlay when drawer is open
-        if (_controller.isOpen)
-          GestureDetector(
-            onTap: _controller.close,
-            child: AnimatedOpacity(
-              opacity: _controller.isOpen ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 300),
-              child: Container(
-                color: Colors.black.withValues(alpha: 0.5),
-              ),
-            ),
-          ),
+        // Overlay - Fades in/out smoothly with drawer animation
+        AnimatedBuilder(
+          animation: _animationController,
+          builder: (context, child) {
+            // Only show overlay during animation or when open
+            if (_animationController.value == 0) {
+              return const SizedBox.shrink();
+            }
 
-        // Sliding drawer
+            return Positioned.fill(
+              child: Row(
+                children: [
+                  // Drawer area - overlay visible but taps go through to drawer
+                  SizedBox(
+                    width: drawerWidth,
+                    child: IgnorePointer(
+                      child: Container(
+                        color: Colors.black.withValues(
+                          alpha: 0.5 * _animationController.value,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // Rest of screen - overlay that closes drawer on tap
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        AppLogger.warning('🎯 OVERLAY TAPPED - Closing drawer', tag: 'DrawerWrapper');
+                        _controller.close();
+                      },
+                      onTapDown: (details) {
+                        AppLogger.debug(
+                          '👇 Tap DOWN on overlay at ${details.globalPosition}',
+                          tag: 'DrawerWrapper',
+                        );
+                      },
+                      onTapUp: (details) {
+                        AppLogger.debug(
+                          '👆 Tap UP on overlay at ${details.globalPosition}',
+                          tag: 'DrawerWrapper',
+                        );
+                      },
+                      onTapCancel: () {
+                        AppLogger.warning('❌ Tap CANCELLED on overlay', tag: 'DrawerWrapper');
+                      },
+                      behavior: HitTestBehavior.opaque,
+                      child: Container(
+                        color: Colors.black.withValues(
+                          alpha: 0.5 * _animationController.value,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+
+        // Sliding drawer - On top of overlay
         SlideTransition(
           position: _slideAnimation,
           child: Align(
             alignment: Alignment.centerLeft,
             child: SideDrawer(
-              onClose: _controller.close,
+              onClose: () {
+                AppLogger.info('Close button pressed in drawer', tag: 'DrawerWrapper');
+                _controller.close();
+              },
               onSettingsTap: widget.onSettingsTap,
+              onCalendarTap: widget.onCalendarTap,
+              onDiaryTap: widget.onDiaryTap,
+              onTrendsTap: widget.onTrendsTap,
             ),
           ),
         ),
