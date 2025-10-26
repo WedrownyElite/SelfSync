@@ -59,6 +59,25 @@ class _HelpScreenState extends State<HelpScreen> {
                     content: _buildTrackMoodContent(theme),
                   ),
 
+                  _buildExpandableSection(
+                    theme: theme,
+                    id: 'gestures',
+                    icon: Icons.swipe_rounded,
+                    title: 'Gestures & Shortcuts',
+                    subtitle: 'Faster ways to interact',
+                    content: _buildGesturesContent(theme),
+                  ),
+
+                  // How to Edit Mood
+                  _buildExpandableSection(
+                    theme: theme,
+                    id: 'editing',
+                    icon: Icons.edit_rounded,
+                    title: 'Editing & Deleting Entries',
+                    subtitle: 'Manage your mood entries',
+                    content: _buildEditingContent(theme),
+                  ),
+
                   // Understanding Mood Scale
                   _buildExpandableSection(
                     theme: theme,
@@ -164,6 +183,75 @@ class _HelpScreenState extends State<HelpScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildEditingContent(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildStepItem(
+          theme: theme,
+          step: '1',
+          title: 'Long Press to Edit/Delete',
+          description: 'Long press any mood entry to see edit and delete options.',
+        ),
+        _buildStepItem(
+          theme: theme,
+          step: '2',
+          title: 'Swipe to Delete',
+          description: 'Swipe a mood entry to the right to quickly delete it.',
+        ),
+        _buildStepItem(
+          theme: theme,
+          step: '3',
+          title: 'Edit Your Entry',
+          description: 'Tap edit to modify the message and mood rating. The entry keeps its original timestamp.',
+        ),
+        _buildInfoBox(
+          theme: theme,
+          icon: Icons.info_outline_rounded,
+          text: 'Deleted entries cannot be recovered. Make sure you want to delete before confirming!',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGesturesContent(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildStepItem(
+          theme: theme,
+          step: '1',
+          title: 'Long Press',
+          description: 'Long press any mood entry to see edit and delete options in a quick menu.',
+        ),
+        _buildStepItem(
+          theme: theme,
+          step: '2',
+          title: 'Swipe to Delete',
+          description: 'Swipe a mood entry to the right to reveal the delete action. Swipe far enough to trigger deletion.',
+        ),
+        _buildStepItem(
+          theme: theme,
+          step: '3',
+          title: 'Calendar Date Tap',
+          description: 'Tap any date in the calendar to filter your diary to that day. Tap a second date to create a date range.',
+        ),
+        _buildStepItem(
+          theme: theme,
+          step: '4',
+          title: 'Scroll to Bottom',
+          description: 'When viewing older entries, tap the down arrow button to quickly jump to your most recent entries.',
+        ),
+        const SizedBox(height: 16),
+        _buildInfoBox(
+          theme: theme,
+          icon: Icons.tips_and_updates_rounded,
+          text: 'Tip: These gestures make managing your mood diary faster and more intuitive!',
+        ),
+      ],
     );
   }
 
@@ -530,6 +618,13 @@ class _HelpScreenState extends State<HelpScreen> {
           icon: Icons.schedule_rounded,
           title: 'Track Consistently',
           description: 'Log your mood at the same times each day for better pattern recognition.',
+        ),
+        const SizedBox(height: 12),
+        _buildTipCard(
+          theme: theme,
+          icon: Icons.touch_app_rounded,
+          title: 'Quick Actions',
+          description: 'Long press entries for quick edit/delete, or swipe right to delete.',
         ),
         const SizedBox(height: 12),
         _buildTipCard(
