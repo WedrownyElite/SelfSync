@@ -152,6 +152,20 @@ class MoodService extends ChangeNotifier {
     _saveEntries(); // Save after deleting
   }
 
+  void updateEntry(String id, String newMessage, int newMoodRating) {
+    final index = _entries.indexWhere((entry) => entry.id == id);
+    if (index != -1) {
+      _entries[index] = MoodEntry(
+        id: id,
+        message: newMessage,
+        moodRating: newMoodRating,
+        timestamp: _entries[index].timestamp,
+      );
+      notifyListeners();
+      _saveEntries(); // Save after updating
+    }
+  }
+
   List<MoodEntry> getEntriesInRange(DateTime start, DateTime end) {
     return _entries.where((entry) {
       return entry.timestamp.isAfter(start) && entry.timestamp.isBefore(end);

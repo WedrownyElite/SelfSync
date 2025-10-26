@@ -1,4 +1,5 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../models/mood_entry.dart';
@@ -34,6 +35,8 @@ class _MoodLogScreenState extends State<MoodLogScreen>
   bool _isInputExpanded = false;
   bool _isKeyboardVisible = false;
   bool _showScrollToBottomButton = false;
+  Timer? _sliderExpansionTimer;
+  bool _isDialogOpen = false;
   late AnimationController _fadeController;
   late AnimationController _calendarExpandController;
 
@@ -63,6 +66,11 @@ class _MoodLogScreenState extends State<MoodLogScreen>
 
   // Calendar mood data cache - stores multiple months
   final Map<String, Map<int, double>> _cachedDayMoodMap = {};
+
+  // Edit state
+  String? _editingEntryId;
+  // ignore: unused_field
+  int _editingMoodRating = 5;
 
   @override
   void initState() {
@@ -192,6 +200,12 @@ class _MoodLogScreenState extends State<MoodLogScreen>
   @override
   void didChangeMetrics() {
     super.didChangeMetrics();
+
+    // Don't respond to metrics changes when a dialog is open
+    if (_isDialogOpen) {
+      return;
+    }
+
     final bottomInset = WidgetsBinding.instance.platformDispatcher.views.first.viewInsets.bottom;
 
     // Keyboard is visible if bottom inset > 0
@@ -203,21 +217,25 @@ class _MoodLogScreenState extends State<MoodLogScreen>
       });
 
       if (_isKeyboardVisible) {
-        // Keyboard is opening - wait for it to finish before showing slider
-        AppLogger.debug('Keyboard opening - waiting to show slider', tag: 'MoodLog');
-        Future.delayed(const Duration(milliseconds: 300), () {
-          if (mounted && _isKeyboardVisible && _messageController.text.isEmpty) {
-            setState(() {
+        // ... timer code ...
+        _sliderExpansionTimer = Timer(const Duration(milliseconds: 150), () {
+          if (mounted &&
+              _isKeyboardVisible &&
+              _messageController.text.isEmpty &&
+              _editingEntryId == null &&
+              !_isDialogOpen) {
+            // Use setState without animation
+            if (mounted) {
               _isInputExpanded = true;
-            });
+              setState(() {});
+            }
           }
         });
       } else {
-        // Keyboard is closing - hide slider immediately
-        AppLogger.debug('Keyboard closing - hiding slider', tag: 'MoodLog');
-        setState(() {
-          _isInputExpanded = false;
-        });
+        // Instant hide when keyboard closes
+        _sliderExpansionTimer?.cancel();
+        _isInputExpanded = false;
+        setState(() {});
       }
     }
   }
@@ -235,6 +253,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
     _itemScaleController.dispose();
     _monthScrollController.dispose();
     _yearScrollController.dispose();
+    _sliderExpansionTimer?.cancel();
     widget.moodService.removeListener(_onMoodServiceUpdate);
     super.dispose();
   }
@@ -993,13 +1012,16 @@ class _MoodLogScreenState extends State<MoodLogScreen>
                 },
                 child: Container(
                   decoration: BoxDecoration(
-                    color: isSelected || isInRange
-                        ? theme.colorScheme.primary.withValues(alpha: 0.2)
-                        : hasMoodData
+                    color: hasMoodData
                         ? _getMoodColor(avgMood!.round()).withValues(alpha: 0.2)
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(8),
-                    border: isToday
+                    border: (isSelected || isInRange)
+                        ? Border.all(
+                      color: theme.colorScheme.primary,
+                      width: 2,
+                    )
+                        : isToday
                         ? Border.all(
                       color: theme.colorScheme.primary,
                       width: 2,
@@ -1191,114 +1213,310 @@ class _MoodLogScreenState extends State<MoodLogScreen>
     }
   }
 
-  Widget _buildMessageBubble(MoodEntry entry, ThemeData theme) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              // Mood emoji
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: _getMoodColor(entry.moodRating).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  MoodEntry.getMoodEmoji(entry.moodRating),
-                  style: const TextStyle(fontSize: 24),
-                ),
-              ),
-              const SizedBox(width: 12),
+  void _startEditing(MoodEntry entry) {
+    setState(() {
+      _editingEntryId = entry.id;
+      _editingMoodRating = entry.moodRating;
+      _currentMoodRating = entry.moodRating;
+      _messageController.text = entry.message;
+      _isInputExpanded = true;
+    });
 
-              // Mood info
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          '${entry.moodRating}/10',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: _getMoodColor(entry.moodRating),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: _getMoodColor(entry.moodRating)
-                                .withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            MoodEntry.getMoodLabel(entry.moodRating),
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: _getMoodColor(entry.moodRating),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.access_time_rounded,
-                          size: 14,
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          DateFormat('h:mm a').format(entry.timestamp),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+    // Focus the text field
+    FocusScope.of(context).requestFocus(FocusNode());
+
+    AppLogger.info('Started editing entry: ${entry.id}', tag: 'MoodLog');
+  }
+
+  void _cancelEdit() {
+    setState(() {
+      _editingEntryId = null;
+      _messageController.clear();
+      _isInputExpanded = false;
+      _currentMoodRating = 5;
+    });
+
+    AppLogger.info('Cancelled editing', tag: 'MoodLog');
+  }
+
+  void _saveEdit() {
+    if (_editingEntryId == null || _messageController.text.trim().isEmpty) {
+      return;
+    }
+
+    final message = _messageController.text.trim();
+    final rating = _currentMoodRating;
+
+    AppLogger.data('Updating mood entry',
+        details: 'ID: $_editingEntryId, Rating: $rating',
+        tag: 'MoodLog'
+    );
+
+    widget.moodService.updateEntry(_editingEntryId!, message, rating);
+    AppLogger.success('Mood entry updated successfully', tag: 'MoodLog');
+
+    _cancelEdit();
+    HapticFeedback.mediumImpact();
+  }
+
+  void _deleteEntry(MoodEntry entry) {
+    // Cancel any pending slider expansion
+    _sliderExpansionTimer?.cancel();
+
+    // Mark that we're opening a dialog
+    setState(() {
+      _isDialogOpen = true;
+      _isInputExpanded = false;
+    });
+
+    // Unfocus to prevent keyboard from appearing after dialog
+    FocusScope.of(context).unfocus();
+
+    // Add a small delay to ensure unfocus completes
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (!mounted) return;
+
+      showDialog(
+        context: context,
+        barrierDismissible: true,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Delete Entry'),
+          content: const Text('Are you sure you want to delete this mood entry?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                widget.moodService.deleteEntry(entry.id);
+                Navigator.pop(dialogContext);
+                HapticFeedback.mediumImpact();
+                AppLogger.success('Mood entry deleted', tag: 'MoodLog');
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red,
+              ),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      ).then((_) {
+        if (mounted) {
+          // Mark dialog as closed
+          setState(() {
+            _isDialogOpen = false;
+          });
+
+          // Ensure keyboard stays closed and cancel any pending expansions
+          _sliderExpansionTimer?.cancel();
+          FocusScope.of(context).unfocus();
+
+          // Additional safeguard: unfocus again after a short delay
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (mounted) {
+              FocusScope.of(context).unfocus();
+            }
+          });
+        }
+      });
+    });
+  }
+
+  void _showContextMenu(BuildContext context, MoodEntry entry, Offset position) {
+    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+
+    showMenu(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        position.dx,
+        position.dy,
+        overlay.size.width - position.dx,
+        overlay.size.height - position.dy,
+      ),
+      items: [
+        PopupMenuItem(
+          child: Row(
+            children: [
+              Icon(Icons.edit_rounded, size: 20, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 12),
+              const Text('Edit'),
+            ],
+          ),
+          onTap: () {
+            // Delay to allow menu to close first
+            Future.delayed(const Duration(milliseconds: 100), () {
+              _startEditing(entry);
+            });
+          },
+        ),
+        PopupMenuItem(
+          child: Row(
+            children: [
+              const Icon(Icons.delete_rounded, size: 20, color: Colors.red),
+              const SizedBox(width: 12),
+              const Text('Delete', style: TextStyle(color: Colors.red)),
+            ],
+          ),
+          onTap: () {
+            Future.delayed(const Duration(milliseconds: 100), () {
+              _deleteEntry(entry);
+            });
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMessageBubble(MoodEntry entry, ThemeData theme) {
+    return Dismissible(
+      key: Key(entry.id),
+      direction: DismissDirection.startToEnd,
+      confirmDismiss: (direction) async {
+        // Unfocus immediately when swipe is detected
+        FocusScope.of(context).unfocus();
+
+        HapticFeedback.mediumImpact();
+        _deleteEntry(entry);
+        return false; // Don't actually dismiss, let the dialog handle it
+      },
+      background: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.red,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        alignment: Alignment.centerLeft,
+        child: const Icon(
+          Icons.delete_rounded,
+          color: Colors.white,
+          size: 28,
+        ),
+      ),
+      child: GestureDetector(
+        onLongPressStart: (details) {
+          // Unfocus when long press detected
+          FocusScope.of(context).unfocus();
+
+          HapticFeedback.mediumImpact();
+          _showContextMenu(context, entry, details.globalPosition);
+        },
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: _editingEntryId == entry.id
+                ? Border.all(
+              color: theme.colorScheme.primary,
+              width: 2,
+            )
+                : null,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  // Mood emoji
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: _getMoodColor(entry.moodRating).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      MoodEntry.getMoodEmoji(entry.moodRating),
+                      style: const TextStyle(fontSize: 24),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
 
-          if (entry.message.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.05),
-                borderRadius: BorderRadius.circular(12),
+                  // Mood info
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              '${entry.moodRating}/10',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: _getMoodColor(entry.moodRating),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _getMoodColor(entry.moodRating)
+                                    .withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                MoodEntry.getMoodLabel(entry.moodRating),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: _getMoodColor(entry.moodRating),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.access_time_rounded,
+                              size: 14,
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              DateFormat('h:mm a').format(entry.timestamp),
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              child: Text(
-                entry.message,
-                style: theme.textTheme.bodyMedium,
-              ),
-            ),
-          ],
-        ],
+
+              if (entry.message.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    entry.message,
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1375,11 +1593,11 @@ class _MoodLogScreenState extends State<MoodLogScreen>
               // Mood slider - animated height
               ClipRect(
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
+                  duration: const Duration(milliseconds: 250),
                   curve: Curves.easeInOutCubic,
                   height: _isInputExpanded ? 80 : 0,
                   child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 200),
+                    duration: const Duration(milliseconds: 150),
                     opacity: _isInputExpanded ? 1 : 0,
                     child: _isInputExpanded
                         ? SingleChildScrollView(
@@ -1473,26 +1691,69 @@ class _MoodLogScreenState extends State<MoodLogScreen>
               Row(
                 children: [
                   Expanded(
-                    child: TextField(
-                      controller: _messageController,
-                      decoration: InputDecoration(
-                        hintText: 'How are you feeling?',
-                        filled: true,
-                        fillColor: theme.colorScheme.onSurface.withValues(alpha: 0.05),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide.none,
+                    child: Focus(
+                      skipTraversal: _isDialogOpen,
+                      canRequestFocus: !_isDialogOpen,
+                      child: TextField(
+                        controller: _messageController,
+                        maxLines: 6,
+                        minLines: 1,
+                        keyboardType: TextInputType.multiline,
+                        textInputAction: TextInputAction.newline,
+                        decoration: InputDecoration(
+                          hintText: _editingEntryId != null
+                              ? 'Edit your message...'
+                              : 'How are you feeling?',
+                          filled: true,
+                          fillColor: theme.colorScheme.onSurface.withValues(alpha: 0.05),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide.none,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide.none,
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 12,
+                          ),
+                          // Disable animations on the input decoration
+                          floatingLabelBehavior: FloatingLabelBehavior.never,
                         ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 12,
-                        ),
+                        onSubmitted: (_) {
+                          if (_editingEntryId != null) {
+                            _saveEdit();
+                          } else {
+                            _sendMessage();
+                          }
+                        },
                       ),
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _sendMessage(),
                     ),
                   ),
                   const SizedBox(width: 8),
+
+                  // Cancel button when editing
+                  if (_editingEntryId != null) ...[
+                    Container(
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: IconButton(
+                        onPressed: _cancelEdit,
+                        icon: const Icon(Icons.close_rounded),
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+
+                  // Send/Save button
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -1504,8 +1765,8 @@ class _MoodLogScreenState extends State<MoodLogScreen>
                       shape: BoxShape.circle,
                     ),
                     child: IconButton(
-                      onPressed: _sendMessage,
-                      icon: const Icon(Icons.send_rounded),
+                      onPressed: _editingEntryId != null ? _saveEdit : _sendMessage,
+                      icon: Icon(_editingEntryId != null ? Icons.check_rounded : Icons.send_rounded),
                       color: theme.colorScheme.surface,
                     ),
                   ),
