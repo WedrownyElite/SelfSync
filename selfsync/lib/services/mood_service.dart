@@ -260,4 +260,81 @@ class MoodService extends ChangeNotifier {
     await _loadEntries();
     debugPrint('Sample data reloaded');
   }
+
+  /// Returns the number of consecutive days up to today
+  /// Returns the number of consecutive days up to today
+  int getCurrentStreak() {
+    if (_entries.isEmpty) return 0;
+
+    // Get unique days with entries (normalized to date only)
+    final uniqueDays = _entries.map((entry) {
+      return DateTime(
+        entry.timestamp.year,
+        entry.timestamp.month,
+        entry.timestamp.day,
+      );
+    }).toSet().toList()
+      ..sort((a, b) => b.compareTo(a)); // Sort newest first
+
+    if (uniqueDays.isEmpty) return 0;
+
+    // Check if today has an entry
+    final today = DateTime.now();
+    final todayNormalized = DateTime(today.year, today.month, today.day);
+
+    int streak = 0;
+    DateTime checkDate = todayNormalized;
+
+    // Count backwards from today
+    for (final entryDate in uniqueDays) {
+      if (entryDate.isAtSameMomentAs(checkDate)) {
+        streak++;
+        checkDate = checkDate.subtract(const Duration(days: 1));
+      } else if (entryDate.isBefore(checkDate)) {
+        // Gap found - stop counting
+        break;
+      }
+    }
+
+    return streak;
+  }
+
+  /// Calculate the best (longest) streak in history
+  /// Returns the longest consecutive day streak ever achieved
+  int getBestStreak() {
+    if (_entries.isEmpty) return 0;
+
+    // Get unique days with entries (normalized to date only)
+    final uniqueDays = _entries.map((entry) {
+      return DateTime(
+        entry.timestamp.year,
+        entry.timestamp.month,
+        entry.timestamp.day,
+      );
+    }).toSet().toList()
+      ..sort(); // Sort oldest first for best streak calculation
+
+    if (uniqueDays.isEmpty) return 0;
+    if (uniqueDays.length == 1) return 1;
+
+    int bestStreak = 1;
+    int currentStreak = 1;
+
+    for (int i = 1; i < uniqueDays.length; i++) {
+      final daysDiff = uniqueDays[i].difference(uniqueDays[i - 1]).inDays;
+
+      if (daysDiff == 1) {
+        // Consecutive day
+        currentStreak++;
+        if (currentStreak > bestStreak) {
+          bestStreak = currentStreak;
+        }
+      } else {
+        // Gap found - reset streak
+        currentStreak = 1;
+      }
+    }
+
+    return bestStreak;
+  }
 }

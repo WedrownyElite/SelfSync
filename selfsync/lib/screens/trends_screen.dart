@@ -334,7 +334,11 @@ class _TrendsScreenState extends State<TrendsScreen> {
     final avgMood = entries.fold<int>(0, (sum, e) => sum + e.moodRating) /
         entries.length;
 
-    // Find best and toughest days
+    // Calculate streaks from ALL entries (not filtered)
+    final currentStreak = widget.moodService.getCurrentStreak();
+    final bestStreak = widget.moodService.getBestStreak();
+
+    // Find best and toughest days (from filtered entries)
     final bestEntry = entries.reduce((a, b) => a.moodRating > b.moodRating ? a : b);
     final toughestEntry = entries.reduce((a, b) => a.moodRating < b.moodRating ? a : b);
 
@@ -346,6 +350,11 @@ class _TrendsScreenState extends State<TrendsScreen> {
       crossAxisSpacing: 16,
       childAspectRatio: 1.5,
       children: [
+        _buildStreakCard(
+          theme,
+          currentStreak,
+          bestStreak,
+        ),
         _buildStatCard(
           theme,
           'Average Mood',
@@ -358,6 +367,13 @@ class _TrendsScreenState extends State<TrendsScreen> {
           'Peak Time',
           _calculatePeakHour(entries) ?? 'N/A',
           Icons.schedule_rounded,
+          null,
+        ),
+        _buildStatCard(
+          theme,
+          'Total Entries',
+          '${entries.length}',
+          Icons.edit_note_rounded,
           null,
         ),
         _buildStatCard(
@@ -466,6 +482,172 @@ class _TrendsScreenState extends State<TrendsScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildStreakCard(ThemeData theme, int currentStreak, int bestStreak) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _showStreakDialog(theme, currentStreak, bestStreak),
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: theme.colorScheme.primary.withValues(alpha: 0.2),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    '🔥',
+                    style: const TextStyle(fontSize: 20),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '$currentStreak ${currentStreak == 1 ? 'day' : 'days'}',
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.primary,
+                        fontSize: 18,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 14,
+                    color: theme.colorScheme.primary.withValues(alpha: 0.5),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Current Streak',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  if (bestStreak > currentStreak)
+                    Text(
+                      'Best: $bestStreak ${bestStreak == 1 ? 'day' : 'days'}',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showStreakDialog(ThemeData theme, int currentStreak, int bestStreak) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Row(
+          children: [
+            const Text('🔥', style: TextStyle(fontSize: 24)),
+            const SizedBox(width: 12),
+            Text(
+              'Streak Info',
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Current Streak',
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '$currentStreak consecutive ${currentStreak == 1 ? 'day' : 'days'} with mood entries',
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Best Streak',
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: theme.colorScheme.secondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '$bestStreak ${bestStreak == 1 ? 'day' : 'days'} - your longest streak ever!',
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                currentStreak >= bestStreak
+                    ? '🎉 Amazing! You\'re on your best streak ever!'
+                    : '💪 Keep going to beat your record of $bestStreak days!',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(
+              'Got it!',
+              style: TextStyle(
+                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -47,7 +47,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
   static final _monthFormat = DateFormat('MMMM');
   static final _fullDateFormat = DateFormat('MMMM d, yyyy');
   static final _dateWithoutYearFormat = DateFormat('MMMM d');
-  
+
   // Calendar state
   bool _isCalendarExpanded = false;
   DateTime _selectedCalendarMonth = DateTime.now();
@@ -76,7 +76,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
   final Map<String, Map<int, double>> _cachedDayMoodMap = {};
 
   Timer? _scrollDebounceTimer;
-  
+
   // Cache variables
   Map<String, List<MoodEntry>>? _cachedGroupedEntries;
   List<String>? _cachedSortedDateKeys;
@@ -124,6 +124,30 @@ class _MoodLogScreenState extends State<MoodLogScreen>
         details: '${_availableMonths.length} months, ${_availableYears.length} years',
         tag: 'MoodLog'
     );
+
+    // If we have an initial date, set it as the selected date filter
+    if (widget.initialDate != null) {
+      AppLogger.info(
+          'Setting initial date filter: ${DateFormat('yyyy-MM-dd').format(widget.initialDate!)}',
+          tag: 'MoodLog'
+      );
+
+      // Set the date as a single-day selection
+      _selectedStartDate = DateTime(
+        widget.initialDate!.year,
+        widget.initialDate!.month,
+        widget.initialDate!.day,
+      );
+      _selectedEndDate = null; // Single date, not a range
+
+      // Set the calendar month to show the selected date (if user expands it)
+      _selectedCalendarMonth = DateTime(
+        widget.initialDate!.year,
+        widget.initialDate!.month,
+      );
+
+      AppLogger.success('Date filter applied (calendar collapsed)', tag: 'MoodLog');
+    }
 
     // If we have an initial date, scroll to it
     if (widget.initialDate != null) {
@@ -391,7 +415,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
   @override
   Widget build(BuildContext context) {
     PerformanceTestHelper.recordBuild('MoodLogScreen');
-    
+
     final theme = Theme.of(context);
     final now = DateTime.now();
     final isToday = _selectedStartDate == null ||
@@ -769,6 +793,22 @@ class _MoodLogScreenState extends State<MoodLogScreen>
                   _selectedEndDate = null;
                 });
                 _loadDateRange(null, null);
+
+                // Check scroll position and update button visibility after clearing filter
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (_scrollController.hasClients) {
+                    final maxScroll = _scrollController.position.maxScrollExtent;
+                    final currentScroll = _scrollController.position.pixels;
+                    final threshold = 200.0;
+                    final shouldShow = (maxScroll - currentScroll) > threshold;
+
+                    if (shouldShow != _showScrollToBottomButton) {
+                      setState(() {
+                        _showScrollToBottomButton = shouldShow;
+                      });
+                    }
+                  }
+                });
               },
               style: TextButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -1135,10 +1175,24 @@ class _MoodLogScreenState extends State<MoodLogScreen>
               setState(() {
                 _selectedStartDate = null;
                 _selectedEndDate = null;
-                // Show the scroll-to-bottom button when filter is cleared
-                _showScrollToBottomButton = true;
               });
               _loadDateRange(null, null);
+
+              // Check scroll position and update button visibility after clearing filter
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (_scrollController.hasClients) {
+                  final maxScroll = _scrollController.position.maxScrollExtent;
+                  final currentScroll = _scrollController.position.pixels;
+                  final threshold = 200.0;
+                  final shouldShow = (maxScroll - currentScroll) > threshold;
+
+                  if (shouldShow != _showScrollToBottomButton) {
+                    setState(() {
+                      _showScrollToBottomButton = shouldShow;
+                    });
+                  }
+                }
+              });
             },
             icon: Icon(
               Icons.close_rounded,

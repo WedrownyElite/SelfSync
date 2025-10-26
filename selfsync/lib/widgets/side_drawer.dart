@@ -5,6 +5,7 @@ import '../screens/help_screen.dart';
 
 /// A custom side drawer that slides in from the left side of the screen
 /// Occupies 1/4 of screen width with smooth animation
+/// Supports swipe-to-close gesture
 class SideDrawer extends StatelessWidget {
   final VoidCallback onClose;
   final VoidCallback? onSettingsTap;
@@ -367,6 +368,45 @@ class _DrawerWrapperState extends State<DrawerWrapper>
     // AnimatedBuilder will automatically rebuild overlay when animation changes
   }
 
+  void _handleDragUpdate(DragUpdateDetails details, double drawerWidth) {
+    // Only process left swipes (negative delta)
+    if (details.primaryDelta! < 0) {
+      final dragDistance = -details.primaryDelta!;
+      final dragPercentage = dragDistance / drawerWidth;
+
+      // Update animation value based on drag
+      final newValue = (_animationController.value - dragPercentage).clamp(0.0, 1.0);
+      _animationController.value = newValue;
+
+      AppLogger.debug(
+        'Drawer drag: ${(newValue * 100).toStringAsFixed(0)}%',
+        tag: 'DrawerWrapper',
+      );
+    }
+  }
+
+  void _handleDragEnd(DragEndDetails details, double drawerWidth) {
+    final velocity = details.primaryVelocity ?? 0;
+
+    AppLogger.info(
+      'Drawer drag ended - velocity: ${velocity.toStringAsFixed(2)}',
+      tag: 'DrawerWrapper',
+    );
+
+    // Determine if drawer should close based on:
+    // 1. Velocity (fast left swipe)
+    // 2. Position (dragged more than halfway)
+    final shouldClose = velocity < -300 || _animationController.value < 0.5;
+
+    if (shouldClose) {
+      AppLogger.success('Drawer closing via swipe gesture', tag: 'DrawerWrapper');
+      _controller.close();
+    } else {
+      AppLogger.info('Drawer snapping back open', tag: 'DrawerWrapper');
+      _animationController.forward();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -433,20 +473,25 @@ class _DrawerWrapperState extends State<DrawerWrapper>
           },
         ),
 
-        // Sliding drawer - On top of overlay
+        // Sliding drawer with swipe-to-close gesture
         SlideTransition(
           position: _slideAnimation,
           child: Align(
             alignment: Alignment.centerLeft,
-            child: SideDrawer(
-              onClose: () {
-                AppLogger.info('Close button pressed in drawer', tag: 'DrawerWrapper');
-                _controller.close();
-              },
-              onSettingsTap: widget.onSettingsTap,
-              onCalendarTap: widget.onCalendarTap,
-              onDiaryTap: widget.onDiaryTap,
-              onTrendsTap: widget.onTrendsTap,
+            child: GestureDetector(
+              // Horizontal drag to close
+              onHorizontalDragUpdate: (details) => _handleDragUpdate(details, drawerWidth),
+              onHorizontalDragEnd: (details) => _handleDragEnd(details, drawerWidth),
+              child: SideDrawer(
+                onClose: () {
+                  AppLogger.info('Close button pressed in drawer', tag: 'DrawerWrapper');
+                  _controller.close();
+                },
+                onSettingsTap: widget.onSettingsTap,
+                onCalendarTap: widget.onCalendarTap,
+                onDiaryTap: widget.onDiaryTap,
+                onTrendsTap: widget.onTrendsTap,
+              ),
             ),
           ),
         ),

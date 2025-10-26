@@ -83,8 +83,10 @@ class _MainScreenState extends State<MainScreen> {
   late final SideDrawerController _drawerController;
   DateTime? _targetDate;
 
-  // ⚡ OPTIMIZATION: Cache screen widgets
-  late final List<Widget> _screens;
+  // ⚡ OPTIMIZATION: Cache CalendarScreen and TrendsScreen
+  // MoodLogScreen needs to rebuild when _targetDate changes, so we don't cache it
+  late final Widget _calendarScreen;
+  late final Widget _trendsScreen;
 
   @override
   void initState() {
@@ -109,26 +111,20 @@ class _MainScreenState extends State<MainScreen> {
           tag: 'MainScreen', error: e, stackTrace: stackTrace);
     }
 
-    // ⚡ OPTIMIZATION: Initialize screens once in initState
-    _screens = [
-      CalendarScreen(
-        moodService: _moodService,
-        onDateSelected: _onDateSelected,
-        drawerController: _drawerController,
-        themeService: widget.themeService,
-      ),
-      MoodLogScreen(
-        moodService: _moodService,
-        initialDate: _targetDate,
-        drawerController: _drawerController,
-        themeService: widget.themeService,
-      ),
-      TrendsScreen(
-        moodService: _moodService,
-        drawerController: _drawerController,
-        themeService: widget.themeService,
-      ),
-    ];
+    // ⚡ OPTIMIZATION: Initialize screens that don't need to rebuild
+    _calendarScreen = CalendarScreen(
+      moodService: _moodService,
+      onDateSelected: _onDateSelected,
+      drawerController: _drawerController,
+      themeService: widget.themeService,
+    );
+
+    _trendsScreen = TrendsScreen(
+      moodService: _moodService,
+      onNavigateToTab: _onNavigateToTab,
+      drawerController: _drawerController,
+      themeService: widget.themeService,
+    );
 
     AppLogger.prettyPrint({
       'Initial tab index': _currentIndex.toString(),
@@ -182,6 +178,24 @@ class _MainScreenState extends State<MainScreen> {
         tag: 'Calendar');
   }
 
+  /// Handle navigation from Trends screen to Mood Log with specific date
+  void _onNavigateToTab(int tabIndex, DateTime? date) {
+    AppLogger.info(
+      'Navigation requested to tab $tabIndex with date: ${date?.toString() ?? "none"}',
+      tag: 'MainScreen',
+    );
+
+    setState(() {
+      _targetDate = date;
+      _currentIndex = tabIndex;
+    });
+
+    AppLogger.success(
+      'Navigated to ${_getTabName(tabIndex)} with date: ${date?.toString() ?? "none"}',
+      tag: 'MainScreen',
+    );
+  }
+
   void _navigateToSettings() {
     AppLogger.info('Navigating to settings', tag: 'Navigation');
 
@@ -202,6 +216,19 @@ class _MainScreenState extends State<MainScreen> {
     // Track builds for performance testing
     PerformanceTestHelper.recordBuild('MainScreen');
 
+    // Build the screen list dynamically to handle _targetDate changes
+    final screens = [
+      _calendarScreen,
+      MoodLogScreen(
+        key: ValueKey(_targetDate), // Force rebuild when date changes
+        moodService: _moodService,
+        initialDate: _targetDate,
+        drawerController: _drawerController,
+        themeService: widget.themeService,
+      ),
+      _trendsScreen,
+    ];
+
     return DrawerWrapper(
       controller: _drawerController,
       onSettingsTap: _navigateToSettings,
@@ -211,11 +238,11 @@ class _MainScreenState extends State<MainScreen> {
       child: Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         // ⚡ OPTIMIZATION: Use IndexedStack instead of switching widgets
-        // This keeps all screens in memory and just shows/hides them
-        // Result: Screens only build ONCE instead of on every tab switch
+        // This keeps Calendar and Trends screens cached
+        // MoodLogScreen rebuilds when _targetDate changes
         body: IndexedStack(
           index: _currentIndex,
-          children: _screens,
+          children: screens,
         ),
         bottomNavigationBar: ModernNavBar(
           currentIndex: _currentIndex,
