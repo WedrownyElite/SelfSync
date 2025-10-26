@@ -384,32 +384,44 @@ class _MoodLogScreenState extends State<MoodLogScreen>
                 ],
               ),
 
-              // Scroll to bottom button
-              if (_showScrollToBottomButton && isToday)
+// Scroll to bottom button with smooth animations
+              if (isToday)
                 Positioned(
                   bottom: 90, // Just above the input area
                   left: 0,
                   right: 0,
-                  child: Center(
-                    child: Material(
-                      elevation: 4,
-                      borderRadius: BorderRadius.circular(20),
-                      color: theme.colorScheme.primary,
-                      child: InkWell(
-                        onTap: () {
-                          _scrollController.animateTo(
-                            _scrollController.position.maxScrollExtent,
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeOutCubic,
-                          );
-                        },
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          child: Icon(
-                            Icons.keyboard_arrow_down_rounded,
-                            color: theme.colorScheme.onPrimary,
-                            size: 28,
+                  child: IgnorePointer(
+                    ignoring: !_showScrollToBottomButton,
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 200),
+                      opacity: _showScrollToBottomButton ? 1.0 : 0.0,
+                      child: AnimatedScale(
+                        duration: const Duration(milliseconds: 200),
+                        scale: _showScrollToBottomButton ? 1.0 : 0.8,
+                        curve: Curves.easeOutCubic,
+                        child: Center(
+                          child: Material(
+                            elevation: 4,
+                            borderRadius: BorderRadius.circular(20),
+                            color: theme.colorScheme.primary,
+                            child: InkWell(
+                              onTap: () {
+                                _scrollController.animateTo(
+                                  _scrollController.position.maxScrollExtent,
+                                  duration: const Duration(milliseconds: 300),
+                                  curve: Curves.easeOutCubic,
+                                );
+                              },
+                              borderRadius: BorderRadius.circular(20),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                child: Icon(
+                                  Icons.keyboard_arrow_down_rounded,
+                                  color: theme.colorScheme.onPrimary,
+                                  size: 28,
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -1152,7 +1164,8 @@ class _MoodLogScreenState extends State<MoodLogScreen>
                 ),
 
                 // Entries for this date
-                ...entries.map((entry) => _buildMessageBubble(entry, theme)),
+                ...(entries..sort((a, b) => a.timestamp.compareTo(b.timestamp)))
+                    .map((entry) => _buildMessageBubble(entry, theme)),
               ],
             ),
           );
