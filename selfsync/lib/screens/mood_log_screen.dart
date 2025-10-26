@@ -40,6 +40,14 @@ class _MoodLogScreenState extends State<MoodLogScreen>
   late AnimationController _fadeController;
   late AnimationController _calendarExpandController;
 
+  // Commonly used formatters
+  static final _dateKeyFormat = DateFormat('yyyy-MM-dd');
+  static final _timeFormat = DateFormat('h:mm a');
+  static final _monthYearFormat = DateFormat('yyyy-MM');
+  static final _monthFormat = DateFormat('MMMM');
+  static final _fullDateFormat = DateFormat('MMMM d, yyyy');
+  static final _dateWithoutYearFormat = DateFormat('MMMM d');
+  
   // Calendar state
   bool _isCalendarExpanded = false;
   DateTime _selectedCalendarMonth = DateTime.now();
@@ -66,6 +74,13 @@ class _MoodLogScreenState extends State<MoodLogScreen>
 
   // Calendar mood data cache - stores multiple months
   final Map<String, Map<int, double>> _cachedDayMoodMap = {};
+
+  Timer? _scrollDebounceTimer;
+  
+  // Cache variables
+  Map<String, List<MoodEntry>>? _cachedGroupedEntries;
+  List<String>? _cachedSortedDateKeys;
+  DateTime? _lastCacheUpdate;
 
   // Edit state
   String? _editingEntryId;
@@ -142,17 +157,25 @@ class _MoodLogScreenState extends State<MoodLogScreen>
   void _onScroll() {
     if (!_scrollController.hasClients) return;
 
-    final maxScroll = _scrollController.position.maxScrollExtent;
-    final currentScroll = _scrollController.position.pixels;
-    final threshold = 200.0; // Show button if more than 200px from bottom
+    // Cancel existing timer
+    _scrollDebounceTimer?.cancel();
 
-    final shouldShow = (maxScroll - currentScroll) > threshold;
+    // Debounce scroll updates to every 100ms
+    _scrollDebounceTimer = Timer(const Duration(milliseconds: 100), () {
+      if (!mounted || !_scrollController.hasClients) return;
 
-    if (shouldShow != _showScrollToBottomButton) {
-      setState(() {
-        _showScrollToBottomButton = shouldShow;
-      });
-    }
+      final maxScroll = _scrollController.position.maxScrollExtent;
+      final currentScroll = _scrollController.position.pixels;
+      final threshold = 200.0;
+
+      final shouldShow = (maxScroll - currentScroll) > threshold;
+
+      if (shouldShow != _showScrollToBottomButton) {
+        setState(() {
+          _showScrollToBottomButton = shouldShow;
+        });
+      }
+    });
   }
 
   void _calculateAvailableDates() {
@@ -169,13 +192,13 @@ class _MoodLogScreenState extends State<MoodLogScreen>
     final yearsSet = <int>{};
 
     for (var entry in entries) {
-      final monthKey = DateFormat('yyyy-MM').format(entry.timestamp);
+      final monthKey = _monthYearFormat.format(entry.timestamp);
       monthsSet.add(monthKey);
       yearsSet.add(entry.timestamp.year);
     }
 
     // Add current month even if no data
-    monthsSet.add(DateFormat('yyyy-MM').format(DateTime.now()));
+    monthsSet.add(_monthYearFormat.format(DateTime.now()));
     yearsSet.add(DateTime.now().year);
 
     // Convert to sorted list of DateTimes
@@ -253,6 +276,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
     _itemScaleController.dispose();
     _monthScrollController.dispose();
     _yearScrollController.dispose();
+    _scrollDebounceTimer?.cancel();
     _sliderExpansionTimer?.cancel();
     widget.moodService.removeListener(_onMoodServiceUpdate);
     super.dispose();
@@ -261,8 +285,15 @@ class _MoodLogScreenState extends State<MoodLogScreen>
   void _onMoodServiceUpdate() {
     AppLogger.debug('MoodService update received, recalculating dates', tag: 'MoodLog');
     _calculateAvailableDates();
+
     // Clear cached mood data when service updates
     _cachedDayMoodMap.clear();
+
+    // Clear message list cache
+    _cachedGroupedEntries = null;
+    _cachedSortedDateKeys = null;
+    _lastCacheUpdate = null;
+
     AppLogger.info('Cleared mood data cache', tag: 'MoodLog.Calendar');
     if (mounted) setState(() {});
   }
@@ -271,12 +302,12 @@ class _MoodLogScreenState extends State<MoodLogScreen>
     // Log date range selection
     if (startDate != null && endDate != null) {
       AppLogger.data('Date range selected',
-          details: '${DateFormat('yyyy-MM-dd').format(startDate)} to ${DateFormat('yyyy-MM-dd').format(endDate)}',
+          details: '${_dateKeyFormat.format(startDate)} to ${_dateKeyFormat.format(endDate)}',
           tag: 'MoodLog.Calendar'
       );
     } else if (startDate != null) {
       AppLogger.data('Single date selected',
-          details: DateFormat('yyyy-MM-dd').format(startDate),
+          details: _dateKeyFormat.format(startDate),
           tag: 'MoodLog.Calendar'
       );
     } else {
@@ -286,10 +317,10 @@ class _MoodLogScreenState extends State<MoodLogScreen>
 
   void _scrollToDate(DateTime date) {
     AppLogger.debug(
-        'Scrolling to date: ${DateFormat('yyyy-MM-dd').format(date)}',
+        'Scrolling to date: ${_dateKeyFormat.format(date)}',
         tag: 'MoodLog'
     );
-    final dateKey = DateFormat('yyyy-MM-dd').format(date);
+    final dateKey = _dateKeyFormat.format(date);
 
     if (_dateKeys.containsKey(dateKey)) {
       final context = _dateKeys[dateKey]!.currentContext;
@@ -425,11 +456,24 @@ class _MoodLogScreenState extends State<MoodLogScreen>
                             color: theme.colorScheme.primary,
                             child: InkWell(
                               onTap: () {
-                                _scrollController.animateTo(
-                                  _scrollController.position.maxScrollExtent,
-                                  duration: const Duration(milliseconds: 300),
-                                  curve: Curves.easeOutCubic,
-                                );
+                                // Use jumpTo instead of animateTo for large distances
+                                if (_scrollController.hasClients) {
+                                  final currentPosition = _scrollController.position.pixels;
+                                  final maxPosition = _scrollController.position.maxScrollExtent;
+                                  final distance = maxPosition - currentPosition;
+
+                                  // If distance is large (more than 2000px), jump directly
+                                  if (distance > 2000) {
+                                    _scrollController.jumpTo(maxPosition);
+                                  } else {
+                                    // Otherwise animate smoothly
+                                    _scrollController.animateTo(
+                                      maxPosition,
+                                      duration: const Duration(milliseconds: 300),
+                                      curve: Curves.easeOutCubic,
+                                    );
+                                  }
+                                }
                               },
                               borderRadius: BorderRadius.circular(20),
                               child: Container(
@@ -640,7 +684,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
                   ),
                 ),
                 child: Text(
-                  DateFormat('MMMM').format(_selectedCalendarMonth),
+                  _monthFormat.format(_selectedCalendarMonth),
                   textAlign: TextAlign.center,
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold,
@@ -779,7 +823,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
 
             return Center(
               child: Text(
-                DateFormat('MMMM').format(month),
+                _monthFormat.format(month),
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                   color: isSelected
@@ -1023,7 +1067,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
                     )
                         : isToday
                         ? Border.all(
-                      color: theme.colorScheme.primary,
+                      color: theme.colorScheme.tertiary,
                       width: 2,
                     )
                         : null,
@@ -1055,7 +1099,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
     if (_selectedEndDate != null) {
       dateText = '${DateFormat('MMM d').format(_selectedStartDate!)} - ${DateFormat('MMM d, yyyy').format(_selectedEndDate!)}';
     } else {
-      dateText = DateFormat('MMMM d, yyyy').format(_selectedStartDate!);
+      dateText = _fullDateFormat.format(_selectedStartDate!);
     }
 
     return Container(
@@ -1091,6 +1135,8 @@ class _MoodLogScreenState extends State<MoodLogScreen>
               setState(() {
                 _selectedStartDate = null;
                 _selectedEndDate = null;
+                // Show the scroll-to-bottom button when filter is cleared
+                _showScrollToBottomButton = true;
               });
               _loadDateRange(null, null);
             },
@@ -1141,20 +1187,44 @@ class _MoodLogScreenState extends State<MoodLogScreen>
       return _buildEmptyState(theme);
     }
 
-    // Group entries by date
-    final groupedEntries = <String, List<MoodEntry>>{};
-    for (var entry in entriesToShow) {
-      final dateKey = DateFormat('yyyy-MM-dd').format(entry.timestamp);
-      if (!groupedEntries.containsKey(dateKey)) {
-        groupedEntries[dateKey] = [];
-        _dateKeys[dateKey] = GlobalKey();
-      }
-      groupedEntries[dateKey]!.add(entry);
-    }
+    // Check if we need to recalculate grouping
+    final now = DateTime.now();
+    final needsRecalc = _cachedGroupedEntries == null ||
+        _lastCacheUpdate == null ||
+        now.difference(_lastCacheUpdate!).inMilliseconds > 100;
 
-    // Sort date keys in chronological order (OLDEST first) so newest appears at bottom
-    final sortedDateKeys = groupedEntries.keys.toList()
-      ..sort((a, b) => a.compareTo(b));
+    Map<String, List<MoodEntry>> groupedEntries;
+    List<String> sortedDateKeys;
+
+    if (needsRecalc) {
+      // Group entries by date
+      groupedEntries = <String, List<MoodEntry>>{};
+      for (var entry in entriesToShow) {
+        final dateKey = _dateKeyFormat.format(entry.timestamp);
+        if (!groupedEntries.containsKey(dateKey)) {
+          groupedEntries[dateKey] = [];
+          _dateKeys[dateKey] = GlobalKey();
+        }
+        groupedEntries[dateKey]!.add(entry);
+      }
+
+      // Sort entries within each day
+      groupedEntries.forEach((key, entries) {
+        entries.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+      });
+
+      // Sort date keys in chronological order (OLDEST first) so newest appears at bottom
+      sortedDateKeys = groupedEntries.keys.toList()
+        ..sort((a, b) => a.compareTo(b));
+
+      // Cache the results
+      _cachedGroupedEntries = groupedEntries;
+      _cachedSortedDateKeys = sortedDateKeys;
+      _lastCacheUpdate = now;
+    } else {
+      groupedEntries = _cachedGroupedEntries!;
+      sortedDateKeys = _cachedSortedDateKeys!;
+    }
 
     return FadeTransition(
       opacity: _fadeController,
@@ -1162,6 +1232,10 @@ class _MoodLogScreenState extends State<MoodLogScreen>
         controller: _scrollController,
         padding: const EdgeInsets.all(16),
         itemCount: sortedDateKeys.length,
+        // Add these optimizations:
+        addAutomaticKeepAlives: false,
+        addRepaintBoundaries: true,
+        cacheExtent: 1000, // Cache 1000px ahead
         itemBuilder: (context, index) {
           final dateKey = sortedDateKeys[index];
           final entries = groupedEntries[dateKey]!;
@@ -1186,8 +1260,9 @@ class _MoodLogScreenState extends State<MoodLogScreen>
                 ),
 
                 // Entries for this date
-                ...(entries..sort((a, b) => a.timestamp.compareTo(b.timestamp)))
-                    .map((entry) => _buildMessageBubble(entry, theme)),
+                ...entries.map((entry) => RepaintBoundary(
+                  child: _buildMessageBubble(entry, theme),
+                )),
               ],
             ),
           );
@@ -1207,9 +1282,9 @@ class _MoodLogScreenState extends State<MoodLogScreen>
     } else if (entryDate == yesterday) {
       return 'Yesterday';
     } else if (entryDate.year == today.year) {
-      return DateFormat('MMMM d').format(date);
+      return _dateWithoutYearFormat.format(date);
     } else {
-      return DateFormat('MMMM d, yyyy').format(date);
+      return _fullDateFormat.format(date);
     }
   }
 
@@ -1369,152 +1444,156 @@ class _MoodLogScreenState extends State<MoodLogScreen>
   }
 
   Widget _buildMessageBubble(MoodEntry entry, ThemeData theme) {
-    return Dismissible(
-      key: Key(entry.id),
-      direction: DismissDirection.startToEnd,
-      confirmDismiss: (direction) async {
-        // Unfocus immediately when swipe is detected
-        FocusScope.of(context).unfocus();
-
-        HapticFeedback.mediumImpact();
-        _deleteEntry(entry);
-        return false; // Don't actually dismiss, let the dialog handle it
-      },
-      background: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.red,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        alignment: Alignment.centerLeft,
-        child: const Icon(
-          Icons.delete_rounded,
-          color: Colors.white,
-          size: 28,
-        ),
-      ),
-      child: GestureDetector(
-        onLongPressStart: (details) {
-          // Unfocus when long press detected
+    return RepaintBoundary(
+      child: Dismissible(
+        key: ValueKey(entry.id), // ValueKey is more efficient than Key
+        direction: DismissDirection.startToEnd,
+        dismissThresholds: const {
+          DismissDirection.startToEnd: 0.4, // Require 40% swipe
+        },
+        confirmDismiss: (direction) async {
+          // Unfocus immediately when swipe is detected
           FocusScope.of(context).unfocus();
 
           HapticFeedback.mediumImpact();
-          _showContextMenu(context, entry, details.globalPosition);
+          _deleteEntry(entry);
+          return false; // Don't actually dismiss, let the dialog handle it
         },
-        child: Container(
+        background: Container(
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
+            color: Colors.red,
             borderRadius: BorderRadius.circular(16),
-            border: _editingEntryId == entry.id
-                ? Border.all(
-              color: theme.colorScheme.primary,
-              width: 2,
-            )
-                : null,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 2),
-              ),
-            ],
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  // Mood emoji
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: _getMoodColor(entry.moodRating).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      MoodEntry.getMoodEmoji(entry.moodRating),
-                      style: const TextStyle(fontSize: 24),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
+          alignment: Alignment.centerLeft,
+          child: const Icon(
+            Icons.delete_rounded,
+            color: Colors.white,
+            size: 28,
+          ),
+        ),
+        child: GestureDetector(
+          onLongPressStart: (details) {
+            // Unfocus when long press detected
+            FocusScope.of(context).unfocus();
 
-                  // Mood info
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text(
-                              '${entry.moodRating}/10',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: _getMoodColor(entry.moodRating),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: _getMoodColor(entry.moodRating)
-                                    .withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                MoodEntry.getMoodLabel(entry.moodRating),
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
+            HapticFeedback.mediumImpact();
+            _showContextMenu(context, entry, details.globalPosition);
+          },
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: _editingEntryId == entry.id
+                  ? Border.all(
+                color: theme.colorScheme.primary,
+                width: 2,
+              )
+                  : null,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    // Mood emoji
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: _getMoodColor(entry.moodRating).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        MoodEntry.getMoodEmoji(entry.moodRating),
+                        style: const TextStyle(fontSize: 24),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+
+                    // Mood info
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                '${entry.moodRating}/10',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
                                   color: _getMoodColor(entry.moodRating),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.access_time_rounded,
-                              size: 14,
-                              color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              DateFormat('h:mm a').format(entry.timestamp),
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: _getMoodColor(entry.moodRating)
+                                      .withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  MoodEntry.getMoodLabel(entry.moodRating),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: _getMoodColor(entry.moodRating),
+                                  ),
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                      ],
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.access_time_rounded,
+                                size: 14,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                _timeFormat.format(entry.timestamp),
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+
+                if (entry.message.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      entry.message,
+                      style: theme.textTheme.bodyMedium,
                     ),
                   ),
                 ],
-              ),
-
-              if (entry.message.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.05),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    entry.message,
-                    style: theme.textTheme.bodyMedium,
-                  ),
-                ),
               ],
-            ],
+            ),
           ),
         ),
       ),
