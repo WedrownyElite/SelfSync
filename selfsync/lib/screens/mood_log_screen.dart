@@ -87,6 +87,9 @@ class _MoodLogScreenState extends State<MoodLogScreen>
   // ignore: unused_field
   int _editingMoodRating = 5;
 
+  // Track newly submitted message for animation
+  String? _newlySubmittedEntryId;
+
   @override
   void initState() {
     super.initState();
@@ -376,7 +379,21 @@ class _MoodLogScreenState extends State<MoodLogScreen>
 
     // Add mood entry using MoodService
     widget.moodService.addEntry(message, rating);
-    AppLogger.success('Mood entry added successfully', tag: 'MoodLog');
+
+    // Capture the ID of the newly added entry (it's the first one after adding)
+    if (widget.moodService.entries.isNotEmpty) {
+      _newlySubmittedEntryId = widget.moodService.entries.first.id;
+      AppLogger.success('Mood entry added successfully - ID: $_newlySubmittedEntryId', tag: 'MoodLog');
+
+      // Clear the animation flag after animation completes
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          setState(() {
+            _newlySubmittedEntryId = null;
+          });
+        }
+      });
+    }
 
     // Clear input and reset state
     _messageController.clear();
@@ -1314,9 +1331,35 @@ class _MoodLogScreenState extends State<MoodLogScreen>
                 ),
 
                 // Entries for this date
-                ...entries.map((entry) => RepaintBoundary(
-                  child: _buildMessageBubble(entry, theme),
-                )),
+                ...entries.map((entry) {
+                  final isNewlySubmitted = entry.id == _newlySubmittedEntryId;
+
+                  Widget messageBubble = RepaintBoundary(
+                    child: _buildMessageBubble(entry, theme),
+                  );
+
+                  // Wrap new messages with slide-up and fade-in animation
+                  if (isNewlySubmitted) {
+                    return TweenAnimationBuilder<double>(
+                      key: ValueKey('anim_${entry.id}'),
+                      tween: Tween(begin: 0.0, end: 1.0),
+                      duration: const Duration(milliseconds: 400),
+                      curve: Curves.easeOutCubic,
+                      builder: (context, value, child) {
+                        return Transform.translate(
+                          offset: Offset(0, 30 * (1 - value)), // Slide up from 30px below
+                          child: Opacity(
+                            opacity: value, // Fade in
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: messageBubble,
+                    );
+                  }
+
+                  return messageBubble;
+                }),
               ],
             ),
           );
