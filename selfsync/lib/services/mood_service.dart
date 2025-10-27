@@ -67,42 +67,94 @@ class MoodService extends ChangeNotifier {
 
   void _loadSampleData() {
     final random = Random(42); // Use seed for consistent data
+    int entryId = 0;
 
-    // Generate data ending TODAY and going back 100 days
-    final today = DateTime.now();
-    final startDate = today.subtract(const Duration(days: 100));
+    // Define the date ranges
+    final startDate2023 = DateTime(2023, 1, 1);
+    final endDate2025 = DateTime(2025, 10, 27);
+    final totalDays = endDate2025.difference(startDate2023).inDays;
 
-    // Generate 100 days of data
-    for (int i = 0; i <= 100; i++) {
-      final dayDate = startDate.add(Duration(days: i));
+    // Generate ~273 scattered entries across 2023-2025 (excluding October 2025)
+    final octoberStart = DateTime(2025, 10, 1);
 
-      // Skip future dates
-      if (dayDate.isAfter(today)) continue;
+    // Calculate days to scatter (excluding October 2025)
+    final daysToScatter = totalDays - 27; // Exclude October 2025 days
 
-      // Generate 1-3 entries per day
-      final entriesPerDay = random.nextInt(3) + 1;
+    for (int i = 0; i < 273; i++) {
+      // Pick a random day between 2023-01-01 and 2025-09-30
+      final randomDayOffset = random.nextInt(daysToScatter);
+      var randomDate = startDate2023.add(Duration(days: randomDayOffset));
 
-      for (int j = 0; j < entriesPerDay; j++) {
-        final hourOffset = random.nextInt(12) + 8; // Between 8 AM and 8 PM
+      // Skip if we accidentally land in October 2025
+      while (randomDate.year == 2025 && randomDate.month == 10) {
+        final newOffset = random.nextInt(daysToScatter);
+        randomDate = startDate2023.add(Duration(days: newOffset));
+      }
+
+      // Random time during the day (6 AM to 11 PM)
+      final hourOffset = random.nextInt(17) + 6;
+      final minuteOffset = random.nextInt(60);
+
+      final entryTime = DateTime(
+        randomDate.year,
+        randomDate.month,
+        randomDate.day,
+        hourOffset,
+        minuteOffset,
+      );
+
+      // Generate mood rating with varied distribution
+      // 10% very low (1-3), 30% low-medium (4-5), 40% good (6-7), 20% excellent (8-10)
+      final moodDist = random.nextInt(100);
+      int moodRating;
+      if (moodDist < 10) {
+        moodRating = random.nextInt(3) + 1; // 1-3
+      } else if (moodDist < 40) {
+        moodRating = random.nextInt(2) + 4; // 4-5
+      } else if (moodDist < 80) {
+        moodRating = random.nextInt(2) + 6; // 6-7
+      } else {
+        moodRating = random.nextInt(3) + 8; // 8-10
+      }
+
+      _entries.add(
+        MoodEntry(
+          id: 'entry_${entryId++}',
+          message: _generateSampleMessage(moodRating),
+          moodRating: moodRating,
+          timestamp: entryTime,
+        ),
+      );
+    }
+
+    // Generate daily entries for October 1-27, 2025
+    // 1-2 entries per day to create realistic daily tracking
+    for (int day = 1; day <= 27; day++) {
+      final entriesThisDay = random.nextBool() ? 1 : 2;
+
+      for (int j = 0; j < entriesThisDay; j++) {
+        // Varied times throughout the day
+        final hourOffset = j == 0
+            ? random.nextInt(6) + 8  // Morning: 8 AM - 1 PM
+            : random.nextInt(7) + 15; // Evening: 3 PM - 9 PM
+        final minuteOffset = random.nextInt(60);
+
         final entryTime = DateTime(
-          dayDate.year,
-          dayDate.month,
-          dayDate.day,
+          2025,
+          10,
+          day,
           hourOffset,
-          random.nextInt(60),
+          minuteOffset,
         );
 
-        // Skip if this would be in the future
-        if (entryTime.isAfter(today)) continue;
-
-        // Generate mood rating with some variation (4-9 range mostly)
-        final baseMood = 6;
+        // October entries trend slightly higher (simulating recent improvement)
+        final baseMood = 7;
         final variation = random.nextInt(5) - 2; // -2 to +2
         final moodRating = (baseMood + variation).clamp(1, 10);
 
         _entries.add(
           MoodEntry(
-            id: 'sample_${i}_$j',
+            id: 'entry_${entryId++}',
             message: _generateSampleMessage(moodRating),
             moodRating: moodRating,
             timestamp: entryTime,
@@ -113,7 +165,12 @@ class MoodService extends ChangeNotifier {
 
     // Sort entries by timestamp (newest first)
     _entries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-    debugPrint('Generated ${_entries.length} sample entries from ${startDate.toString().split(' ')[0]} to ${today.toString().split(' ')[0]}');
+
+    final oldestEntry = _entries.last;
+    final newestEntry = _entries.first;
+    debugPrint('Generated ${_entries.length} static entries');
+    debugPrint('Date range: ${oldestEntry.timestamp.toString().split(' ')[0]} to ${newestEntry.timestamp.toString().split(' ')[0]}');
+    debugPrint('October 2025: Complete daily coverage (Oct 1-27)');
   }
 
   String _generateSampleMessage(int mood) {
@@ -261,7 +318,6 @@ class MoodService extends ChangeNotifier {
     debugPrint('Sample data reloaded');
   }
 
-  /// Returns the number of consecutive days up to today
   /// Returns the number of consecutive days up to today
   int getCurrentStreak() {
     if (_entries.isEmpty) return 0;

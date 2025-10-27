@@ -16,7 +16,7 @@ void main() {
   AppLogger.lifecycle('App starting...', tag: 'Main');
 
   runApp(const SelfSyncApp());
-
+  
   AppLogger.lifecycle('App launched successfully', tag: 'Main');
   AppLogger.separator();
 }

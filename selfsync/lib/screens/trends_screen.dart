@@ -57,7 +57,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
   @override
   Widget build(BuildContext context) {
     PerformanceTestHelper.recordBuild('TrendsScreen');
-    
+
     final theme = Theme.of(context);
 
     // Debug logging
@@ -129,6 +129,8 @@ class _TrendsScreenState extends State<TrendsScreen> {
                 children: [
                   const SizedBox(height: 8),
                   _buildInsights(theme, entries),
+                  const SizedBox(height: 24),
+                  _buildComparisonCard(theme, _getComparisonData(widget.moodService.entries, _selectedRange)),
                   const SizedBox(height: 24),
                   _buildStatsGrid(theme, entries),
                   const SizedBox(height: 24),
@@ -1710,6 +1712,378 @@ class _TrendsScreenState extends State<TrendsScreen> {
         'You\'ve logged ${entries.length} entries across $uniqueDays days. Great tracking! ⭐');
 
     return insights;
+  }
+
+  Map<String, dynamic> _getComparisonData(List<MoodEntry> allEntries, String range) {
+    if (allEntries.isEmpty) {
+      return {'hasComparison': false};
+    }
+
+    final now = DateTime.now();
+
+    // For 1Y and Lifetime, compare current year vs previous year
+    if (range == '1Y' || range == 'Lifetime') {
+      final currentYear = now.year;
+      final previousYear = currentYear - 1;
+
+      // Current year entries
+      final currentYearEntries = allEntries.where((e) {
+        return e.timestamp.year == currentYear;
+      }).toList();
+
+      // Previous year entries
+      final previousYearEntries = allEntries.where((e) {
+        return e.timestamp.year == previousYear;
+      }).toList();
+
+      if (currentYearEntries.isEmpty || previousYearEntries.isEmpty) {
+        return {'hasComparison': false};
+      }
+
+      final currentAvg = currentYearEntries.fold<int>(0, (sum, e) => sum + e.moodRating) / currentYearEntries.length;
+      final previousAvg = previousYearEntries.fold<int>(0, (sum, e) => sum + e.moodRating) / previousYearEntries.length;
+      final change = currentAvg - previousAvg;
+      final percentChange = (change / previousAvg * 100);
+
+      return {
+        'hasComparison': true,
+        'currentAvg': currentAvg,
+        'previousAvg': previousAvg,
+        'change': change,
+        'percentChange': percentChange,
+        'currentCount': currentYearEntries.length,
+        'previousCount': previousYearEntries.length,
+        'isYearlyComparison': true,
+        'currentYear': currentYear,
+        'previousYear': previousYear,
+      };
+    }
+
+    // For other ranges, use period-over-period comparison
+    int days;
+
+    switch (range) {
+      case '7D':
+        days = 7;
+        break;
+      case '30D':
+        days = 30;
+        break;
+      case '3M':
+        days = 90;
+        break;
+      default:
+        days = 7;
+    }
+
+    // Current period
+    final currentCutoff = now.subtract(Duration(days: days));
+    final currentEntries = allEntries.where((e) {
+      final entryDate = DateTime(e.timestamp.year, e.timestamp.month, e.timestamp.day);
+      return entryDate.isAfter(DateTime(currentCutoff.year, currentCutoff.month, currentCutoff.day)) ||
+          entryDate.isAtSameMomentAs(DateTime(currentCutoff.year, currentCutoff.month, currentCutoff.day));
+    }).toList();
+
+    // Previous period
+    final previousStart = currentCutoff.subtract(Duration(days: days));
+    final previousEnd = currentCutoff;
+    final previousEntries = allEntries.where((e) {
+      final entryDate = DateTime(e.timestamp.year, e.timestamp.month, e.timestamp.day);
+      final startDate = DateTime(previousStart.year, previousStart.month, previousStart.day);
+      final endDate = DateTime(previousEnd.year, previousEnd.month, previousEnd.day);
+      return (entryDate.isAfter(startDate) || entryDate.isAtSameMomentAs(startDate)) &&
+          entryDate.isBefore(endDate);
+    }).toList();
+
+    if (currentEntries.isEmpty || previousEntries.isEmpty) {
+      return {'hasComparison': false};
+    }
+
+    final currentAvg = currentEntries.fold<int>(0, (sum, e) => sum + e.moodRating) / currentEntries.length;
+    final previousAvg = previousEntries.fold<int>(0, (sum, e) => sum + e.moodRating) / previousEntries.length;
+    final change = currentAvg - previousAvg;
+    final percentChange = (change / previousAvg * 100);
+
+    return {
+      'hasComparison': true,
+      'currentAvg': currentAvg,
+      'previousAvg': previousAvg,
+      'change': change,
+      'percentChange': percentChange,
+      'currentCount': currentEntries.length,
+      'previousCount': previousEntries.length,
+      'isYearlyComparison': false,
+    };
+  }
+
+  Widget _buildComparisonCard(ThemeData theme, Map<String, dynamic> comparisonData) {
+    if (!comparisonData['hasComparison']) {
+      return const SizedBox.shrink();
+    }
+
+    final currentAvg = comparisonData['currentAvg'] as double;
+    final previousAvg = comparisonData['previousAvg'] as double;
+    final change = comparisonData['change'] as double;
+    final percentChange = comparisonData['percentChange'] as double;
+    final currentCount = comparisonData['currentCount'] as int;
+    final previousCount = comparisonData['previousCount'] as int;
+    final isYearlyComparison = comparisonData['isYearlyComparison'] ?? false;
+
+    final isImprovement = change > 0;
+    final isSignificantChange = change.abs() >= 0.5;
+
+    Color changeColor;
+    IconData changeIcon;
+    String changeText;
+
+    if (!isSignificantChange) {
+      changeColor = theme.colorScheme.onSurface.withValues(alpha: 0.6);
+      changeIcon = Icons.trending_flat_rounded;
+      changeText = 'Stable';
+    } else if (isImprovement) {
+      changeColor = const Color(0xFF4CAF50); // Green
+      changeIcon = Icons.trending_up_rounded;
+      changeText = 'Improving';
+    } else {
+      changeColor = const Color(0xFFFF9800); // Orange
+      changeIcon = Icons.trending_down_rounded;
+      changeText = 'Declining';
+    }
+
+    String periodLabel;
+    String currentPeriodLabel;
+    String previousPeriodLabel;
+
+    if (isYearlyComparison) {
+      final currentYear = comparisonData['currentYear'] as int;
+      final previousYear = comparisonData['previousYear'] as int;
+      periodLabel = '$currentYear vs $previousYear';
+      currentPeriodLabel = currentYear.toString();
+      previousPeriodLabel = previousYear.toString();
+    } else {
+      switch (_selectedRange) {
+        case '7D':
+          periodLabel = 'Last 7 Days vs Previous 7 Days';
+          currentPeriodLabel = 'Current Period';
+          previousPeriodLabel = 'Previous Period';
+          break;
+        case '30D':
+          periodLabel = 'Last 30 Days vs Previous 30 Days';
+          currentPeriodLabel = 'Current Period';
+          previousPeriodLabel = 'Previous Period';
+          break;
+        case '3M':
+          periodLabel = 'Last 3 Months vs Previous 3 Months';
+          currentPeriodLabel = 'Current Period';
+          previousPeriodLabel = 'Previous Period';
+          break;
+        default:
+          periodLabel = 'Comparison';
+          currentPeriodLabel = 'Current Period';
+          previousPeriodLabel = 'Previous Period';
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            theme.colorScheme.primary.withValues(alpha: 0.08),
+            theme.colorScheme.secondary.withValues(alpha: 0.08),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: theme.colorScheme.primary.withValues(alpha: 0.2),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.compare_arrows_rounded,
+                size: 20,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Period Comparison',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            periodLabel,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      currentPeriodLabel,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          currentAvg.toStringAsFixed(1),
+                          style: theme.textTheme.headlineMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                        Text(
+                          '/10',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '$currentCount ${currentCount == 1 ? 'entry' : 'entries'}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: changeColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: changeColor.withValues(alpha: 0.3),
+                    width: 1.5,
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Icon(
+                      changeIcon,
+                      color: changeColor,
+                      size: 24,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${change > 0 ? '+' : ''}${change.toStringAsFixed(1)}',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: changeColor,
+                      ),
+                    ),
+                    Text(
+                      '${percentChange.abs().toStringAsFixed(0)}%',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: changeColor.withValues(alpha: 0.8),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      previousPeriodLabel,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          previousAvg.toStringAsFixed(1),
+                          style: theme.textTheme.headlineMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                          ),
+                        ),
+                        Text(
+                          '/10',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '$previousCount ${previousCount == 1 ? 'entry' : 'entries'}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (isSignificantChange) ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: changeColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    isImprovement ? Icons.emoji_emotions_rounded : Icons.self_improvement_rounded,
+                    size: 18,
+                    color: changeColor,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      isImprovement
+                          ? 'Great progress! Your mood is ${changeText.toLowerCase()}.'
+                          : 'Consider self-care activities to boost your mood.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: changeColor,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   List<MoodEntry> _getEntriesForRange(

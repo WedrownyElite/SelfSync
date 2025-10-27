@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../services/mood_service.dart';
 import '../models/mood_entry.dart';
 import 'package:intl/intl.dart';
@@ -36,9 +37,14 @@ class CalendarScreen extends StatefulWidget {
 }
 
 class _CalendarScreenState extends State<CalendarScreen>
-    with AutomaticKeepAliveClientMixin {
+    with AutomaticKeepAliveClientMixin, TickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
   final int currentYear = DateTime.now().year;
+  int _selectedYear = DateTime.now().year;
+
+  // Year picker state
+  bool _isYearPickerVisible = false;
+  late AnimationController _yearPickerController;
 
   // Cache for mood data
   Map<String, _DayMoodData> _moodCache = {};
@@ -64,15 +70,21 @@ class _CalendarScreenState extends State<CalendarScreen>
   void initState() {
     super.initState();
 
+    // Initialize year picker controller
+    _yearPickerController = AnimationController(
+      duration: const Duration(milliseconds: 350),
+      vsync: this,
+    );
+
     // Pre-calculate all month data
     _monthsData = List.generate(12, (index) {
       final month = index + 1;
       return _MonthData(
         month: month,
-        year: currentYear,
-        days: _getDaysInMonth(currentYear, month),
-        startingWeekday: _getStartingWeekday(currentYear, month),
-        monthName: DateFormat('MMMM').format(DateTime(currentYear, month)),
+        year: _selectedYear,
+        days: _getDaysInMonth(_selectedYear, month),
+        startingWeekday: _getStartingWeekday(_selectedYear, month),
+        monthName: DateFormat('MMMM').format(DateTime(_selectedYear, month)),
       );
     });
 
@@ -93,6 +105,7 @@ class _CalendarScreenState extends State<CalendarScreen>
   void dispose() {
     _scrollController.removeListener(_saveScrollPosition);
     _scrollController.dispose();
+    _yearPickerController.dispose();
     widget.moodService.removeListener(_onMoodServiceUpdate);
     widget.themeService.removeListener(_onThemeChanged);
     super.dispose();
@@ -200,12 +213,48 @@ class _CalendarScreenState extends State<CalendarScreen>
     }
   }
 
+  void _changeYear(int delta) {
+    setState(() {
+      _selectedYear += delta;
+
+      // Close year picker if open
+      if (_isYearPickerVisible) {
+        _isYearPickerVisible = false;
+        _yearPickerController.reverse();
+      }
+
+      // Regenerate month data for new year
+      _monthsData = List.generate(12, (index) {
+        final month = index + 1;
+        return _MonthData(
+          month: month,
+          year: _selectedYear,
+          days: _getDaysInMonth(_selectedYear, month),
+          startingWeekday: _getStartingWeekday(_selectedYear, month),
+          monthName: DateFormat('MMMM').format(DateTime(_selectedYear, month)),
+        );
+      });
+
+      // Rebuild mood cache for new year
+      _buildMoodCache();
+
+      // Scroll to top when changing years
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    });
+  }
+
   void _buildMoodCache() {
     final newCache = <String, _DayMoodData>{};
 
     // Group entries by date
     for (var entry in widget.moodService.entries) {
-      if (entry.timestamp.year != currentYear) continue;
+      if (entry.timestamp.year != _selectedYear) continue;
 
       final key =
           '${entry.timestamp.year}-${entry.timestamp.month}-${entry.timestamp.day}';
@@ -263,53 +312,107 @@ class _CalendarScreenState extends State<CalendarScreen>
   @override
   Widget build(BuildContext context) {
     PerformanceTestHelper.recordBuild('CalendarScreen');
-    
+
     super.build(context);
     final theme = Theme.of(context);
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
-        child: Column(
+        child: Stack(
           children: [
-            _buildHeader(context, theme),
+            Column(
+              children: [
+                _buildHeader(context, theme),
 
-            // Static day header
-            _buildDayHeader(theme),
+                // Static day header
+                _buildDayHeader(theme),
 
-            // Scrollable calendar months
-            Expanded(
-              child: _displayMode == DisplayMode.condensed
-                  ? _buildCondensedYearView(theme)
-                  : ListView.builder(
-                controller: _scrollController,
-                padding: const EdgeInsets.only(
-                  left: 16,
-                  right: 16,
-                  top: 16,
-                  bottom: 80,
+                // Scrollable calendar months
+                Expanded(
+                  child: _displayMode == DisplayMode.condensed
+                      ? _buildCondensedYearView(theme)
+                      : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.only(
+                      left: 16,
+                      right: 16,
+                      top: 16,
+                      bottom: 80,
+                    ),
+                    itemCount: 12,
+                    cacheExtent: 3000,
+                    addAutomaticKeepAlives: false,
+                    addRepaintBoundaries: true,
+                    physics: const BouncingScrollPhysics(),
+                    itemBuilder: (context, index) {
+                      return _MonthSection(
+                        key: ValueKey('month_${_monthsData[index].month}'),
+                        monthData: _monthsData[index],
+                        getMoodData: _getMoodDataForDate,
+                        theme: theme,
+                        displayMode: _displayMode,
+                        colorStyle: _colorStyle,
+                        onDateTap: _navigateToDiary,
+                      );
+                    },
+                  ),
                 ),
-                itemCount: 12,
-                cacheExtent: 3000,
-                addAutomaticKeepAlives: false,
-                addRepaintBoundaries: true,
-                physics: const BouncingScrollPhysics(),
-                itemBuilder: (context, index) {
-                  return _MonthSection(
-                    key: ValueKey('month_${_monthsData[index].month}'),
-                    monthData: _monthsData[index],
-                    getMoodData: _getMoodDataForDate,
-                    theme: theme,
-                    displayMode: _displayMode,
-                    colorStyle: _colorStyle,
-                    onDateTap: _navigateToDiary,
-                  );
-                },
-              ),
+
+                // Mode selector at bottom
+                _buildModeSelector(theme),
+              ],
             ),
 
-            // Mode selector at bottom
-            _buildModeSelector(theme),
+            // Year picker overlay
+            if (_isYearPickerVisible)
+              Positioned.fill(
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _isYearPickerVisible = false;
+                      _yearPickerController.reverse();
+
+                      // Rebuild month data and cache when closing
+                      _monthsData = List.generate(12, (index) {
+                        final month = index + 1;
+                        return _MonthData(
+                          month: month,
+                          year: _selectedYear,
+                          days: _getDaysInMonth(_selectedYear, month),
+                          startingWeekday: _getStartingWeekday(_selectedYear, month),
+                          monthName: DateFormat('MMMM').format(DateTime(_selectedYear, month)),
+                        );
+                      });
+
+                      _buildMoodCache();
+
+                      // Scroll to top when year changes
+                      if (_scrollController.hasClients) {
+                        _scrollController.animateTo(
+                          0,
+                          duration: const Duration(milliseconds: 400),
+                          curve: Curves.easeOutCubic,
+                        );
+                      }
+                    });
+                  },
+                  child: Container(
+                    color: Colors.black.withValues(alpha: 0.3),
+                  ),
+                ),
+              ),
+
+            if (_isYearPickerVisible)
+              Positioned(
+                top: 120, // Position below header
+                left: 16,
+                right: 16,
+                child: GestureDetector(
+                  onTap: () {}, // Prevent tap from passing through to background
+                  child: _buildYearPicker(theme),
+                ),
+              ),
           ],
         ),
       ),
@@ -317,6 +420,8 @@ class _CalendarScreenState extends State<CalendarScreen>
   }
 
   Widget _buildHeader(BuildContext context, ThemeData theme) {
+    final isCurrentYear = _selectedYear == currentYear;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: BoxDecoration(
@@ -329,30 +434,209 @@ class _CalendarScreenState extends State<CalendarScreen>
           ),
         ],
       ),
-      child: Row(
+      child: Column(
         children: [
-          HamburgerMenuButton(controller: widget.drawerController),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Mood Calendar',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
+          Row(
+            children: [
+              HamburgerMenuButton(controller: widget.drawerController),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Mood Calendar',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      'Your year at a glance',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // Year navigation
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(
+                onPressed: () => _changeYear(-1),
+                icon: Icon(
+                  Icons.chevron_left_rounded,
+                  color: theme.colorScheme.primary,
+                ),
+                tooltip: 'Previous year',
+                style: IconButton.styleFrom(
+                  backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                Text(
-                  'Your year at a glance',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
+              const SizedBox(width: 24),
+              GestureDetector(
+                onTap: () {
+                  setState(() {
+                    final wasVisible = _isYearPickerVisible;
+                    _isYearPickerVisible = !_isYearPickerVisible;
+
+                    if (_isYearPickerVisible) {
+                      _yearPickerController.forward();
+                    } else {
+                      _yearPickerController.reverse();
+
+                      // When closing the picker, rebuild month data and cache
+                      // This happens only once, not during scrolling
+                      if (wasVisible) {
+                        _monthsData = List.generate(12, (index) {
+                          final month = index + 1;
+                          return _MonthData(
+                            month: month,
+                            year: _selectedYear,
+                            days: _getDaysInMonth(_selectedYear, month),
+                            startingWeekday: _getStartingWeekday(_selectedYear, month),
+                            monthName: DateFormat('MMMM').format(DateTime(_selectedYear, month)),
+                          );
+                        });
+
+                        _buildMoodCache();
+
+                        // Scroll to top when year changes
+                        if (_scrollController.hasClients) {
+                          _scrollController.animateTo(
+                            0,
+                            duration: const Duration(milliseconds: 400),
+                            curve: Curves.easeOutCubic,
+                          );
+                        }
+                      }
+                    }
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: _isYearPickerVisible
+                        ? theme.colorScheme.primary.withValues(alpha: 0.15)
+                        : isCurrentYear
+                        ? theme.colorScheme.primary.withValues(alpha: 0.15)
+                        : theme.colorScheme.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _isYearPickerVisible
+                          ? theme.colorScheme.primary
+                          : isCurrentYear
+                          ? theme.colorScheme.primary.withValues(alpha: 0.3)
+                          : theme.colorScheme.onSurface.withValues(alpha: 0.2),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Text(
+                    _selectedYear.toString(),
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: _isYearPickerVisible || isCurrentYear
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurface,
+                    ),
                   ),
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 24),
+              IconButton(
+                onPressed: () => _changeYear(1),
+                icon: Icon(
+                  Icons.chevron_right_rounded,
+                  color: theme.colorScheme.primary,
+                ),
+                tooltip: 'Next year',
+                style: IconButton.styleFrom(
+                  backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildYearPicker(ThemeData theme) {
+    // Get available years from mood data only
+    final availableYears = widget.moodService.entries.isEmpty
+        ? [currentYear]
+        : widget.moodService.entries
+        .map((e) => e.timestamp.year)
+        .toSet()
+        .toList()
+      ..sort();
+
+    if (availableYears.isEmpty) {
+      availableYears.add(currentYear);
+    }
+
+    final initialIndex = availableYears.indexOf(_selectedYear);
+
+    return Material(
+      elevation: 8,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        height: 200,
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: theme.colorScheme.primary.withValues(alpha: 0.3),
+            width: 1.5,
+          ),
+        ),
+        child: ListWheelScrollView(
+          controller: FixedExtentScrollController(
+            initialItem: initialIndex >= 0 ? initialIndex : availableYears.length - 1,
+          ),
+          itemExtent: 50,
+          diameterRatio: 1.5,
+          physics: const FixedExtentScrollPhysics(),
+          onSelectedItemChanged: (index) {
+            HapticFeedback.selectionClick();
+            final newYear = availableYears[index];
+
+            // Only update the selected year in state, don't rebuild everything yet
+            // This prevents lag during scrolling
+            if (_selectedYear != newYear) {
+              setState(() {
+                _selectedYear = newYear;
+              });
+            }
+          },
+          children: List.generate(availableYears.length, (index) {
+            final year = availableYears[index];
+            final isSelected = year == _selectedYear;
+
+            return Center(
+              child: Text(
+                '$year',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  color: isSelected
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  fontSize: isSelected ? 18 : 16,
+                ),
+              ),
+            );
+          }),
+        ),
       ),
     );
   }
@@ -1232,7 +1516,7 @@ class _DayCell extends StatelessWidget {
     final textColor = hasEntry
         ? Colors.white
         : (isDark ? Colors.white70 : Colors.grey[700]!);
-    
+
     return Container(
       width: double.infinity,
       height: double.infinity,
