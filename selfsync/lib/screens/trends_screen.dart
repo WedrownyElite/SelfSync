@@ -1,4 +1,6 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:math';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../models/mood_entry.dart';
@@ -26,14 +28,48 @@ class TrendsScreen extends StatefulWidget {
   State<TrendsScreen> createState() => _TrendsScreenState();
 }
 
-class _TrendsScreenState extends State<TrendsScreen> {
+class _TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixin {
   String _selectedRange = '7D';
   final PageController _distributionPageController = PageController();
   int _currentDistributionPage = 0;
 
+  // Custom date range state
+  bool _isCalendarExpanded = false;
+  DateTime _selectedCalendarMonth = DateTime.now();
+  DateTime? _customStartDate;
+  DateTime? _customEndDate;
+  late AnimationController _calendarExpandController;
+
+  // Month/Year picker state
+  bool _isMonthPickerVisible = false;
+  bool _isYearPickerVisible = false;
+  late AnimationController _monthPickerController;
+  late AnimationController _yearPickerController;
+
+  // Date formatters
+  static final _monthFormat = DateFormat('MMMM');
+  static final _dateFormat = DateFormat('MMM d, yyyy');
+
   @override
   void initState() {
     super.initState();
+
+    // Initialize animation controllers
+    _calendarExpandController = AnimationController(
+      duration: const Duration(milliseconds: 400),
+      vsync: this,
+    );
+
+    _monthPickerController = AnimationController(
+      duration: const Duration(milliseconds: 350),
+      vsync: this,
+    );
+
+    _yearPickerController = AnimationController(
+      duration: const Duration(milliseconds: 350),
+      vsync: this,
+    );
+
     // Listen to mood service changes
     widget.moodService.addListener(_onMoodServiceUpdate);
     AppLogger.lifecycle('Started listening to MoodService updates', tag: 'TrendsScreen');
@@ -41,6 +77,9 @@ class _TrendsScreenState extends State<TrendsScreen> {
 
   @override
   void dispose() {
+    _calendarExpandController.dispose();
+    _monthPickerController.dispose();
+    _yearPickerController.dispose();
     widget.moodService.removeListener(_onMoodServiceUpdate);
     _distributionPageController.dispose();
     AppLogger.lifecycle('Stopped listening to MoodService updates', tag: 'TrendsScreen');
@@ -195,24 +234,25 @@ class _TrendsScreenState extends State<TrendsScreen> {
 
   Widget _buildEmptyState(ThemeData theme) {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32.0),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 color: theme.colorScheme.secondary.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 Icons.insights_rounded,
-                size: 64,
+                size: 48,
                 color: theme.colorScheme.secondary,
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
             Text(
               'No mood data yet',
               style: theme.textTheme.titleLarge?.copyWith(
@@ -235,29 +275,32 @@ class _TrendsScreenState extends State<TrendsScreen> {
 
   Widget _buildNoDataForRangeState(ThemeData theme) {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32.0),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 color: theme.colorScheme.primary.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 Icons.calendar_today_rounded,
-                size: 64,
+                size: 48,
                 color: theme.colorScheme.primary,
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
             Text(
               'No data for this time range',
               style: theme.textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.bold,
+                fontSize: 20,
               ),
+              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
@@ -274,58 +317,565 @@ class _TrendsScreenState extends State<TrendsScreen> {
   }
 
   Widget _buildTimeRangeSelector(ThemeData theme) {
-    final ranges = ['7D', '30D', '3M', '1Y', 'Lifetime'];
+    final ranges = ['7D', '30D', '3M', '1Y', 'Lifetime', 'Custom'];
 
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: ranges.map((range) {
-          final isSelected = _selectedRange == range;
-          return Expanded(
-            child: GestureDetector(
-              onTap: () {
-                // Use AppLogger instead of print
-                AppLogger.info(
-                    'Time range changed: $_selectedRange → $range',
-                    tag: 'TrendsScreen.Selector'
-                );
-                setState(() => _selectedRange = range);
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                decoration: BoxDecoration(
-                  color: isSelected ? theme.colorScheme.surface : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                  boxShadow: isSelected
-                      ? [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.1),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: ranges.map((range) {
+              final isSelected = _selectedRange == range;
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    AppLogger.info(
+                        'Time range changed: $_selectedRange → $range',
+                        tag: 'TrendsScreen.Selector'
+                    );
+
+                    if (range == 'Custom') {
+                      setState(() {
+                        _isCalendarExpanded = !_isCalendarExpanded;
+                        _selectedRange = range;
+                        if (_isCalendarExpanded) {
+                          _calendarExpandController.forward();
+                        } else {
+                          _calendarExpandController.reverse();
+                        }
+                      });
+                    } else {
+                      setState(() {
+                        _selectedRange = range;
+                        _isCalendarExpanded = false;
+                        _customStartDate = null;
+                        _customEndDate = null;
+                        _calendarExpandController.reverse();
+                      });
+                    }
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: isSelected ? theme.colorScheme.surface : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: isSelected
+                          ? [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.1),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ]
+                          : null,
                     ),
-                  ]
-                      : null,
+                    child: Text(
+                      range,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: isSelected
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ),
                 ),
-                child: Text(
-                  range,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: isSelected
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+              );
+            }).toList(),
+          ),
+        ),
+
+        // Expandable calendar
+        if (_selectedRange == 'Custom')
+          _buildExpandableCalendar(theme),
+      ],
+    );
+  }
+
+  Widget _buildExpandableCalendar(ThemeData theme) {
+    return SizeTransition(
+      sizeFactor: CurvedAnimation(
+        parent: _calendarExpandController,
+        curve: Curves.easeInOutCubic,
+      ),
+      child: Container(
+        margin: const EdgeInsets.only(top: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            Column(
+              children: [
+                _buildMonthYearSelector(theme),
+                const SizedBox(height: 16),
+                _buildCalendarGrid(theme),
+                if (_customStartDate != null || _customEndDate != null) ...[
+                  const SizedBox(height: 16),
+                  _buildSelectedDateDisplay(theme),
+                ],
+              ],
+            ),
+
+            // Month picker overlay
+            if (_isMonthPickerVisible)
+              Positioned(
+                top: 50,
+                left: 0,
+                right: 0,
+                child: _buildMonthPicker(theme),
+              ),
+
+            // Year picker overlay
+            if (_isYearPickerVisible)
+              Positioned(
+                top: 50,
+                left: 0,
+                right: 0,
+                child: _buildYearPicker(theme),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMonthYearSelector(ThemeData theme) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            // Left arrow
+            IconButton(
+              icon: Icon(
+                Icons.chevron_left_rounded,
+                color: theme.colorScheme.primary,
+              ),
+              onPressed: () {
+                setState(() {
+                  _selectedCalendarMonth = DateTime(
+                    _selectedCalendarMonth.year,
+                    _selectedCalendarMonth.month - 1,
+                  );
+                });
+              },
+            ),
+
+            // Month button
+            Expanded(
+              child: GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _isMonthPickerVisible = !_isMonthPickerVisible;
+                    if (_isMonthPickerVisible) {
+                      _isYearPickerVisible = false;
+                      _monthPickerController.forward();
+                      _yearPickerController.reverse();
+                    } else {
+                      _monthPickerController.reverse();
+                    }
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: _isMonthPickerVisible
+                        ? theme.colorScheme.primary.withValues(alpha: 0.15)
+                        : theme.colorScheme.surface,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: _isMonthPickerVisible
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurface.withValues(alpha: 0.2),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Text(
+                    _monthFormat.format(_selectedCalendarMonth),
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: _isMonthPickerVisible
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurface,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ),
             ),
-          );
-        }).toList(),
+
+            const SizedBox(width: 8),
+
+            // Year button
+            Expanded(
+              child: GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _isYearPickerVisible = !_isYearPickerVisible;
+                    if (_isYearPickerVisible) {
+                      _isMonthPickerVisible = false;
+                      _yearPickerController.forward();
+                      _monthPickerController.reverse();
+                    } else {
+                      _yearPickerController.reverse();
+                    }
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: _isYearPickerVisible
+                        ? theme.colorScheme.primary.withValues(alpha: 0.15)
+                        : theme.colorScheme.surface,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: _isYearPickerVisible
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurface.withValues(alpha: 0.2),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Text(
+                    '${_selectedCalendarMonth.year}',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: _isYearPickerVisible
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // Right arrow
+            IconButton(
+              icon: Icon(
+                Icons.chevron_right_rounded,
+                color: theme.colorScheme.primary,
+              ),
+              onPressed: () {
+                setState(() {
+                  _selectedCalendarMonth = DateTime(
+                    _selectedCalendarMonth.year,
+                    _selectedCalendarMonth.month + 1,
+                  );
+                });
+              },
+            ),
+          ],
+        ),
+
+        // Clear button on separate row
+        if (_customStartDate != null || _customEndDate != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _customStartDate = null;
+                    _customEndDate = null;
+                  });
+                },
+                icon: Icon(
+                  Icons.close_rounded,
+                  size: 16,
+                  color: theme.colorScheme.error,
+                ),
+                label: Text(
+                  'Clear Selection',
+                  style: TextStyle(
+                    color: theme.colorScheme.error,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildMonthPicker(ThemeData theme) {
+    return Material(
+      elevation: 8,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        height: 200,
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: theme.colorScheme.primary.withValues(alpha: 0.3),
+            width: 1.5,
+          ),
+        ),
+        child: ListWheelScrollView(
+          controller: FixedExtentScrollController(
+            initialItem: _selectedCalendarMonth.month - 1,
+          ),
+          itemExtent: 50,
+          diameterRatio: 1.5,
+          physics: const FixedExtentScrollPhysics(),
+          onSelectedItemChanged: (index) {
+            HapticFeedback.selectionClick();
+            setState(() {
+              _selectedCalendarMonth = DateTime(
+                _selectedCalendarMonth.year,
+                index + 1,
+              );
+            });
+          },
+          children: List.generate(12, (index) {
+            final month = DateTime(_selectedCalendarMonth.year, index + 1);
+            final isSelected = index == _selectedCalendarMonth.month - 1;
+
+            return Center(
+              child: Text(
+                _monthFormat.format(month),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  color: isSelected
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  fontSize: isSelected ? 18 : 16,
+                ),
+              ),
+            );
+          }),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildYearPicker(ThemeData theme) {
+    final currentYear = DateTime.now().year;
+    final earliestYear = widget.moodService.entries.isEmpty
+        ? currentYear - 10
+        : widget.moodService.entries.map((e) => e.timestamp.year).reduce((a, b) => a < b ? a : b);
+
+    final years = List.generate(
+      currentYear - earliestYear + 1,
+          (i) => earliestYear + i,
+    );
+
+    final initialIndex = years.indexOf(_selectedCalendarMonth.year);
+
+    return Material(
+      elevation: 8,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        height: 200,
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: theme.colorScheme.primary.withValues(alpha: 0.3),
+            width: 1.5,
+          ),
+        ),
+        child: ListWheelScrollView(
+          controller: FixedExtentScrollController(
+            initialItem: initialIndex >= 0 ? initialIndex : years.length - 1,
+          ),
+          itemExtent: 50,
+          diameterRatio: 1.5,
+          physics: const FixedExtentScrollPhysics(),
+          onSelectedItemChanged: (index) {
+            HapticFeedback.selectionClick();
+            setState(() {
+              _selectedCalendarMonth = DateTime(
+                years[index],
+                _selectedCalendarMonth.month,
+              );
+            });
+          },
+          children: List.generate(years.length, (index) {
+            final year = years[index];
+            final isSelected = year == _selectedCalendarMonth.year;
+
+            return Center(
+              child: Text(
+                '$year',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  color: isSelected
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  fontSize: isSelected ? 18 : 16,
+                ),
+              ),
+            );
+          }),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCalendarGrid(ThemeData theme) {
+    final firstDayOfMonth = DateTime(_selectedCalendarMonth.year, _selectedCalendarMonth.month, 1);
+    final lastDayOfMonth = DateTime(_selectedCalendarMonth.year, _selectedCalendarMonth.month + 1, 0);
+    final daysInMonth = lastDayOfMonth.day;
+    final startingWeekday = firstDayOfMonth.weekday % 7;
+    final now = DateTime.now();
+
+    return Column(
+      children: [
+        // Weekday headers
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day) {
+            return Expanded(
+              child: Center(
+                child: Text(
+                  day,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 8),
+
+        // Calendar days
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 7,
+            childAspectRatio: 1,
+          ),
+          itemCount: 42, // 6 weeks max
+          itemBuilder: (context, index) {
+            if (index < startingWeekday || index >= startingWeekday + daysInMonth) {
+              return const SizedBox();
+            }
+
+            final day = index - startingWeekday + 1;
+            final date = DateTime(_selectedCalendarMonth.year, _selectedCalendarMonth.month, day);
+            final isFuture = date.isAfter(now);
+            final isSelected = (_customStartDate != null && _isSameDay(date, _customStartDate!)) ||
+                (_customEndDate != null && _isSameDay(date, _customEndDate!));
+            final isInRange = _customStartDate != null &&
+                _customEndDate != null &&
+                date.isAfter(_customStartDate!) &&
+                date.isBefore(_customEndDate!);
+
+            return GestureDetector(
+              onTap: isFuture ? null : () {
+                setState(() {
+                  if (_customStartDate == null || (_customStartDate != null && _customEndDate != null)) {
+                    // Start new selection
+                    _customStartDate = date;
+                    _customEndDate = null;
+                  } else if (_customEndDate == null) {
+                    // Complete selection
+                    if (date.isBefore(_customStartDate!)) {
+                      _customEndDate = _customStartDate;
+                      _customStartDate = date;
+                    } else {
+                      _customEndDate = date;
+                    }
+                  }
+                });
+              },
+              child: Container(
+                margin: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? theme.colorScheme.primary
+                      : isInRange
+                      ? theme.colorScheme.primary.withValues(alpha: 0.2)
+                      : null,
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Text(
+                    '$day',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: isFuture
+                          ? theme.colorScheme.onSurface.withValues(alpha: 0.3)
+                          : isSelected
+                          ? theme.colorScheme.onPrimary
+                          : theme.colorScheme.onSurface,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  Widget _buildSelectedDateDisplay(ThemeData theme) {
+    String text;
+    if (_customStartDate != null && _customEndDate != null) {
+      text = '${_dateFormat.format(_customStartDate!)} - ${_dateFormat.format(_customEndDate!)}';
+    } else if (_customStartDate != null) {
+      text = 'Start: ${_dateFormat.format(_customStartDate!)} (tap to select end date)';
+    } else {
+      text = 'Select dates';
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.date_range_rounded,
+            size: 18,
+            color: theme.colorScheme.primary,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -343,6 +893,9 @@ class _TrendsScreenState extends State<TrendsScreen> {
     // Find best and toughest days (from filtered entries)
     final bestEntry = entries.reduce((a, b) => a.moodRating > b.moodRating ? a : b);
     final toughestEntry = entries.reduce((a, b) => a.moodRating < b.moodRating ? a : b);
+
+    // Calculate consistency score (based on variance)
+    final consistencyData = _calculateConsistency(entries);
 
     return GridView.count(
       crossAxisCount: 2,
@@ -371,12 +924,10 @@ class _TrendsScreenState extends State<TrendsScreen> {
           Icons.schedule_rounded,
           null,
         ),
-        _buildStatCard(
+        _buildConsistencyCard(
           theme,
-          'Total Entries',
-          '${entries.length}',
-          Icons.edit_note_rounded,
-          null,
+          consistencyData['score']!,
+          consistencyData['label']!,
         ),
         _buildStatCard(
           theme,
@@ -404,6 +955,46 @@ class _TrendsScreenState extends State<TrendsScreen> {
   String _formatToughestDayWithDate(MoodEntry entry) {
     final date = DateFormat('MMM d').format(entry.timestamp);
     return '${MoodEntry.getMoodEmoji(entry.moodRating)} $date';
+  }
+
+  Map<String, dynamic> _calculateConsistency(List<MoodEntry> entries) {
+    if (entries.length < 2) {
+      return {'score': 100.0, 'label': 'Perfect'};
+    }
+
+    // Calculate variance
+    final mean = entries.fold<int>(0, (sum, e) => sum + e.moodRating) / entries.length;
+    final variance = entries.fold<double>(
+      0.0,
+          (sum, e) => sum + ((e.moodRating - mean) * (e.moodRating - mean)),
+    ) / entries.length;
+
+    // Calculate standard deviation
+    final stdDev = sqrt(variance);
+
+    // Convert to a 0-100 score (lower variance = higher score)
+    // Max reasonable std dev for mood scale 1-10 is ~3 (very inconsistent)
+    // We'll map 0 std dev = 100 score, 3 std dev = 0 score
+    final consistencyScore = (100 - (stdDev / 3.0 * 100)).clamp(0, 100);
+
+    // Determine label
+    String label;
+    if (consistencyScore >= 80) {
+      label = 'Very Stable';
+    } else if (consistencyScore >= 60) {
+      label = 'Stable';
+    } else if (consistencyScore >= 40) {
+      label = 'Variable';
+    } else if (consistencyScore >= 20) {
+      label = 'Inconsistent';
+    } else {
+      label = 'Volatile';
+    }
+
+    return {
+      'score': consistencyScore,
+      'label': label,
+    };
   }
 
   void _navigateToDiary(DateTime date) {
@@ -483,6 +1074,113 @@ class _TrendsScreenState extends State<TrendsScreen> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildConsistencyCard(ThemeData theme, double score, String label) {
+    // Determine color and icon based on score
+    Color indicatorColor;
+    IconData icon;
+
+    if (score >= 80) {
+      indicatorColor = const Color(0xFF4CAF50); // Green - Very Stable
+      icon = Icons.trending_flat_rounded;
+    } else if (score >= 60) {
+      indicatorColor = const Color(0xFF8BC34A); // Light Green - Stable
+      icon = Icons.show_chart_rounded;
+    } else if (score >= 40) {
+      indicatorColor = const Color(0xFFFFC107); // Amber - Variable
+      icon = Icons.waves_rounded;
+    } else if (score >= 20) {
+      indicatorColor = const Color(0xFFFF9800); // Orange - Inconsistent
+      icon = Icons.swap_vert_rounded;
+    } else {
+      indicatorColor = const Color(0xFFFF5722); // Red - Volatile
+      icon = Icons.multiple_stop_rounded;
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  icon,
+                  size: 20,
+                  color: indicatorColor,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: indicatorColor,
+                      fontSize: 16,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            // Progress bar
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: score / 100,
+                    minHeight: 8,
+                    backgroundColor: theme.colorScheme.onSurface.withValues(alpha: 0.1),
+                    valueColor: AlwaysStoppedAnimation<Color>(indicatorColor),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Consistency',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    Text(
+                      '${score.toStringAsFixed(0)}%',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: indicatorColor,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -657,12 +1355,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
   Widget _buildMoodChart(ThemeData theme, List<MoodEntry> entries) {
     if (entries.isEmpty) return const SizedBox.shrink();
 
-    // Check if we should use aggregated data (for 3M or more)
-    final useAggregatedData = _selectedRange == '3M' ||
-        _selectedRange == '1Y' ||
-        _selectedRange == 'Lifetime';
-
-    // Calculate daily averages
+    // Calculate daily averages first
     final Map<DateTime, double> dayAverages = {};
     final Map<DateTime, int> dayCounts = {};
 
@@ -681,35 +1374,35 @@ class _TrendsScreenState extends State<TrendsScreen> {
       dayAverages[date] = sum / dayCounts[date]!;
     });
 
-    // Get sorted dates and values
+    // Get sorted dates
     final sortedDates = dayAverages.keys.toList()..sort();
+    final dataPointCount = sortedDates.length;
 
-    // For longer periods, aggregate by week
+    // Smart aggregation based on data point count
+    String aggregationType = 'Daily';
     final Map<DateTime, double> displayValues;
-    if (useAggregatedData && sortedDates.length > 30) {
-      displayValues = <DateTime, double>{};
-      final Map<DateTime, List<double>> weeklyValues = {};
 
-      for (var date in sortedDates) {
-        // Get Monday of the week
-        final weekStart = date.subtract(Duration(days: date.weekday - 1));
-        final monday = DateTime(weekStart.year, weekStart.month, weekStart.day);
-
-        weeklyValues.putIfAbsent(monday, () => []);
-        weeklyValues[monday]!.add(dayAverages[date]!);
-      }
-
-      weeklyValues.forEach((monday, values) {
-        displayValues[monday] =
-            values.reduce((a, b) => a + b) / values.length;
-      });
+    if (dataPointCount > 180) {
+      // More than 6 months of daily data - aggregate by month
+      aggregationType = 'Monthly';
+      displayValues = _aggregateByMonth(sortedDates, dayAverages);
+    } else if (dataPointCount > 60) {
+      // More than 2 months of daily data - aggregate by week
+      aggregationType = 'Weekly';
+      displayValues = _aggregateByWeek(sortedDates, dayAverages);
     } else {
+      // 60 days or less - show daily
+      aggregationType = 'Daily';
       displayValues = dayAverages;
     }
 
-    // Update sorted dates with the aggregated keys
     final sortedDisplayDates = displayValues.keys.toList()..sort();
+    final displayPointCount = sortedDisplayDates.length;
     final maxMood = 10.0;
+
+    // Determine if we need scrolling (more than 50 points to display)
+    final needsScrolling = displayPointCount > 50;
+    final chartWidth = needsScrolling ? displayPointCount * 24.0 : double.infinity;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -727,6 +1420,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header with data info
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -738,22 +1432,39 @@ class _TrendsScreenState extends State<TrendsScreen> {
                     color: theme.colorScheme.primary,
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    'Mood Trend',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Mood Trend',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        '$displayPointCount $aggregationType points',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-              Text(
-                useAggregatedData
-                    ? 'Weekly Average'
-                    : 'Daily Average',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                  fontWeight: FontWeight.w500,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '$aggregationType Average',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
@@ -764,7 +1475,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Y-axis labels (mood scores) - reduced width
+              // Y-axis labels (mood scores)
               SizedBox(
                 width: 24,
                 height: 200,
@@ -783,27 +1494,53 @@ class _TrendsScreenState extends State<TrendsScreen> {
               ),
               const SizedBox(width: 8),
 
-              // Chart
+              // Chart (scrollable if needed)
               Expanded(
                 child: Column(
                   children: [
                     SizedBox(
                       height: 200,
-                      child: CustomPaint(
+                      child: needsScrolling
+                          ? SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: SizedBox(
+                          width: chartWidth,
+                          height: 200,
+                          child: CustomPaint(
+                            painter: MoodChartPainter(
+                              dates: sortedDisplayDates,
+                              values: displayValues,
+                              maxValue: maxMood,
+                              color: theme.colorScheme.primary,
+                              useSmoothing: aggregationType != 'Daily',
+                            ),
+                          ),
+                        ),
+                      )
+                          : CustomPaint(
                         painter: MoodChartPainter(
                           dates: sortedDisplayDates,
                           values: displayValues,
                           maxValue: maxMood,
                           color: theme.colorScheme.primary,
-                          useSmoothing: useAggregatedData,
+                          useSmoothing: aggregationType != 'Daily',
                         ),
                         size: const Size(double.infinity, 200),
                       ),
                     ),
                     const SizedBox(height: 12),
 
-                    // X-axis labels (dates)
-                    _buildXAxisLabels(sortedDisplayDates, theme),
+                    // X-axis labels
+                    needsScrolling
+                        ? SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: SizedBox(
+                        width: chartWidth,
+                        child: _buildXAxisLabelsScrollable(
+                            sortedDisplayDates, theme, aggregationType),
+                      ),
+                    )
+                        : _buildXAxisLabels(sortedDisplayDates, theme, aggregationType),
                   ],
                 ),
               ),
@@ -812,38 +1549,118 @@ class _TrendsScreenState extends State<TrendsScreen> {
 
           const SizedBox(height: 16),
 
-          // Additional info
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primary.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.info_outline_rounded,
-                  size: 16,
-                  color: theme.colorScheme.primary,
+          // Info and controls
+          Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    useAggregatedData
-                        ? 'Longer periods show weekly averages for clearer trends'
-                        : 'Each point shows your daily average mood',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline_rounded,
+                      size: 16,
+                      color: theme.colorScheme.primary,
                     ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _getChartInfoText(aggregationType, dataPointCount, needsScrolling),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Scroll hint
+              if (needsScrolling)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.swipe_rounded,
+                        size: 14,
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Swipe to explore all data points',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
+            ],
           ),
         ],
       ),
     );
+  }
+
+  Map<DateTime, double> _aggregateByWeek(List<DateTime> dates, Map<DateTime, double> dayAverages) {
+    final Map<DateTime, double> weeklyValues = {};
+    final Map<DateTime, List<double>> weeklyGroups = {};
+
+    for (var date in dates) {
+      // Get Monday of the week
+      final weekStart = date.subtract(Duration(days: date.weekday - 1));
+      final monday = DateTime(weekStart.year, weekStart.month, weekStart.day);
+
+      weeklyGroups.putIfAbsent(monday, () => []);
+      weeklyGroups[monday]!.add(dayAverages[date]!);
+    }
+
+    weeklyGroups.forEach((monday, values) {
+      weeklyValues[monday] = values.reduce((a, b) => a + b) / values.length;
+    });
+
+    return weeklyValues;
+  }
+
+  Map<DateTime, double> _aggregateByMonth(List<DateTime> dates, Map<DateTime, double> dayAverages) {
+    final Map<DateTime, double> monthlyValues = {};
+    final Map<DateTime, List<double>> monthlyGroups = {};
+
+    for (var date in dates) {
+      // Get first day of the month
+      final monthStart = DateTime(date.year, date.month, 1);
+
+      monthlyGroups.putIfAbsent(monthStart, () => []);
+      monthlyGroups[monthStart]!.add(dayAverages[date]!);
+    }
+
+    monthlyGroups.forEach((monthStart, values) {
+      monthlyValues[monthStart] = values.reduce((a, b) => a + b) / values.length;
+    });
+
+    return monthlyValues;
+  }
+
+  String _getChartInfoText(String aggregationType, int originalCount, bool needsScrolling) {
+    if (aggregationType == 'Monthly') {
+      return 'Showing monthly averages from $originalCount days of data for clearer long-term trends';
+    } else if (aggregationType == 'Weekly') {
+      return 'Showing weekly averages from $originalCount days of data for better clarity';
+    } else {
+      if (needsScrolling) {
+        return 'Showing daily averages - swipe chart to explore all $originalCount data points';
+      } else {
+        return 'Each point shows your daily average mood';
+      }
+    }
   }
 
   Widget _buildYAxisLabel(String label, ThemeData theme) {
@@ -857,7 +1674,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
     );
   }
 
-  Widget _buildXAxisLabels(List<DateTime> dates, ThemeData theme) {
+  Widget _buildXAxisLabels(List<DateTime> dates, ThemeData theme, String aggregationType) {
     if (dates.isEmpty) return const SizedBox.shrink();
 
     final indicesToShow = _getDateIndicesToShow(dates.length);
@@ -868,9 +1685,11 @@ class _TrendsScreenState extends State<TrendsScreen> {
         if (index >= dates.length) return const SizedBox.shrink();
 
         final date = dates[index];
+        final label = _formatDateLabel(date, aggregationType);
+
         return Expanded(
           child: Text(
-            DateFormat('MMM d').format(date),
+            label,
             style: TextStyle(
               fontSize: 10,
               color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
@@ -884,6 +1703,56 @@ class _TrendsScreenState extends State<TrendsScreen> {
         );
       }).toList(),
     );
+  }
+
+  Widget _buildXAxisLabelsScrollable(List<DateTime> dates, ThemeData theme, String aggregationType) {
+    if (dates.isEmpty) return const SizedBox.shrink();
+
+    // Show more labels when scrollable - every 5th point or so
+    final step = (dates.length / 10).ceil().clamp(1, 10);
+    final indicesToShow = <int>[];
+
+    for (int i = 0; i < dates.length; i += step) {
+      indicesToShow.add(i);
+    }
+    // Always include the last index
+    if (indicesToShow.last != dates.length - 1) {
+      indicesToShow.add(dates.length - 1);
+    }
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: List.generate(dates.length, (index) {
+        if (!indicesToShow.contains(index)) {
+          return SizedBox(width: 24.0);
+        }
+
+        final date = dates[index];
+        final label = _formatDateLabel(date, aggregationType);
+
+        return SizedBox(
+          width: 24.0,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 9,
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+            ),
+            textAlign: TextAlign.center,
+          ),
+        );
+      }),
+    );
+  }
+
+  String _formatDateLabel(DateTime date, String aggregationType) {
+    if (aggregationType == 'Monthly') {
+      return DateFormat('MMM\nyy').format(date);
+    } else if (aggregationType == 'Weekly') {
+      return DateFormat('MMM d').format(date);
+    } else {
+      return DateFormat('M/d').format(date);
+    }
   }
 
   List<int> _getDateIndicesToShow(int totalDates) {
@@ -900,7 +1769,13 @@ class _TrendsScreenState extends State<TrendsScreen> {
     // Determine calendar style based on selected range
     final isLongRange = _selectedRange == '1Y' || _selectedRange == 'Lifetime';
 
-    if (isLongRange) {
+    // Check if custom range is long (more than 90 days)
+    final isCustomLongRange = _selectedRange == 'Custom' &&
+        _customStartDate != null &&
+        _customEndDate != null &&
+        _customEndDate!.difference(_customStartDate!).inDays > 90;
+
+    if (isLongRange || isCustomLongRange) {
       return _buildGridCalendar(theme, entries);
     } else {
       return _buildLinearCalendar(theme, entries);
@@ -909,20 +1784,36 @@ class _TrendsScreenState extends State<TrendsScreen> {
 
   Widget _buildLinearCalendar(ThemeData theme, List<MoodEntry> entries) {
     final now = DateTime.now();
-    int daysToShow;
+    DateTime startDate;
+    DateTime endDate;
 
-    switch (_selectedRange) {
-      case '7D':
-        daysToShow = 7;
-        break;
-      case '30D':
-        daysToShow = 30;
-        break;
-      case '3M':
-        daysToShow = 90;
-        break;
-      default:
-        daysToShow = 7;
+    // Handle custom date range
+    if (_selectedRange == 'Custom' && _customStartDate != null && _customEndDate != null) {
+      startDate = DateTime(_customStartDate!.year, _customStartDate!.month, _customStartDate!.day);
+      endDate = DateTime(_customEndDate!.year, _customEndDate!.month, _customEndDate!.day);
+    } else {
+      // Default behavior for preset ranges
+      int daysToShow;
+      switch (_selectedRange) {
+        case '7D':
+          daysToShow = 7;
+          break;
+        case '30D':
+          daysToShow = 30;
+          break;
+        case '3M':
+          daysToShow = 90;
+          break;
+        case 'Custom':
+        // Custom selected but no dates - show last 7 days
+          daysToShow = 7;
+          break;
+        default:
+          daysToShow = 7;
+      }
+
+      endDate = DateTime(now.year, now.month, now.day);
+      startDate = endDate.subtract(Duration(days: daysToShow - 1));
     }
 
     // Count entries per day
@@ -935,10 +1826,6 @@ class _TrendsScreenState extends State<TrendsScreen> {
       );
       dailyCounts[date] = (dailyCounts[date] ?? 0) + 1;
     }
-
-    // Generate list of dates
-    final endDate = DateTime(now.year, now.month, now.day);
-    final startDate = endDate.subtract(Duration(days: daysToShow - 1));
 
     // Group dates by month
     final Map<String, List<DateTime>> monthGroups = {};
@@ -974,10 +1861,27 @@ class _TrendsScreenState extends State<TrendsScreen> {
                 color: theme.colorScheme.primary,
               ),
               const SizedBox(width: 8),
-              Text(
-                'Activity Calendar',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Activity Calendar',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    if (_selectedRange == 'Custom' && _customStartDate != null && _customEndDate != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          '${DateFormat('MMM d').format(_customStartDate!)} - ${DateFormat('MMM d, yyyy').format(_customEndDate!)}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ],
@@ -1163,9 +2067,21 @@ class _TrendsScreenState extends State<TrendsScreen> {
 
   Widget _buildGridCalendar(ThemeData theme, List<MoodEntry> entries) {
     final now = DateTime.now();
-    final startDate = _selectedRange == '1Y'
-        ? DateTime(now.year - 1, now.month, now.day)
-        : (entries.isNotEmpty ? entries.last.timestamp : now.subtract(const Duration(days: 365)));
+    DateTime startDate;
+    DateTime endDate;
+
+    // Handle custom date range
+    if (_selectedRange == 'Custom' && _customStartDate != null && _customEndDate != null) {
+      startDate = DateTime(_customStartDate!.year, _customStartDate!.month, _customStartDate!.day);
+      endDate = DateTime(_customEndDate!.year, _customEndDate!.month, _customEndDate!.day);
+    } else if (_selectedRange == '1Y') {
+      startDate = DateTime(now.year - 1, now.month, now.day);
+      endDate = DateTime(now.year, now.month, now.day);
+    } else {
+      // Lifetime
+      startDate = entries.isNotEmpty ? entries.last.timestamp : now.subtract(const Duration(days: 365));
+      endDate = DateTime(now.year, now.month, now.day);
+    }
 
     // Count entries per day
     final Map<DateTime, int> dailyCounts = {};
@@ -1178,18 +2094,19 @@ class _TrendsScreenState extends State<TrendsScreen> {
       dailyCounts[date] = (dailyCounts[date] ?? 0) + 1;
     }
 
-    // Determine which months to show
-    final months = <DateTime>[];
+    // Group months by year
+    final Map<int, List<DateTime>> yearGroups = {};
     DateTime currentMonth = DateTime(startDate.year, startDate.month);
-    final endMonth = DateTime(now.year, now.month);
+    final endMonth = DateTime(endDate.year, endDate.month);
 
     while (currentMonth.isBefore(endMonth) ||
         (currentMonth.year == endMonth.year && currentMonth.month == endMonth.month)) {
-      months.add(currentMonth);
+      yearGroups.putIfAbsent(currentMonth.year, () => []);
+      yearGroups[currentMonth.year]!.add(currentMonth);
       currentMonth = DateTime(currentMonth.year, currentMonth.month + 1);
     }
 
-    // Build the grid: rows = days (1-31), columns = months
+    // Build the grid separated by years
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -1206,6 +2123,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header
           Row(
             children: [
               Icon(
@@ -1214,108 +2132,152 @@ class _TrendsScreenState extends State<TrendsScreen> {
                 color: theme.colorScheme.primary,
               ),
               const SizedBox(width: 8),
-              Text(
-                'Activity Calendar',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Activity Calendar',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    if (_selectedRange == 'Custom' && _customStartDate != null && _customEndDate != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          '${DateFormat('MMM d').format(_customStartDate!)} - ${DateFormat('MMM d, yyyy').format(_customEndDate!)}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ],
           ),
           const SizedBox(height: 20),
 
-          // Month headers (J F M A M J J A S O N D)
-          Row(
-            children: [
-              const SizedBox(width: 24), // Space for day numbers
-              ...months.map((month) {
-                return Expanded(
-                  child: Center(
-                    child: Text(
-                      DateFormat('MMM').format(month).substring(0, 1), // First letter
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.grey[700],
-                      ),
-                    ),
-                  ),
-                );
-              }),
-            ],
-          ),
-          const SizedBox(height: 8),
-
-          // Day rows (1-31)
-          ...List.generate(31, (dayIndex) {
-            final dayNumber = dayIndex + 1;
+          // Build calendar for each year
+          ...yearGroups.entries.map((yearEntry) {
+            final year = yearEntry.key;
+            final months = yearEntry.value;
+            final isLastYear = year == yearGroups.keys.last;
 
             return Padding(
-              padding: const EdgeInsets.only(bottom: 2),
-              child: Row(
+              padding: EdgeInsets.only(bottom: isLastYear ? 0 : 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Day number
-                  SizedBox(
-                    width: 24,
+                  // Year label
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
                     child: Text(
-                      '$dayNumber',
+                      '$year',
                       style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w500,
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.primary,
                       ),
-                      textAlign: TextAlign.right,
                     ),
                   ),
-                  // Month cells
-                  ...months.map((month) {
-                    // Check if this day exists in this month
-                    final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
 
-                    if (dayNumber > daysInMonth) {
-                      // Day doesn't exist in this month
-                      return Expanded(
-                        child: Container(
-                          height: 14,
-                          margin: const EdgeInsets.all(1),
-                        ),
-                      );
-                    }
+                  // Month headers
+                  Row(
+                    children: [
+                      const SizedBox(width: 24), // Space for day numbers
+                      ...months.map((month) {
+                        return Expanded(
+                          child: Center(
+                            child: Text(
+                              DateFormat('MMM').format(month).substring(0, 1),
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
 
-                    // Get the date for this cell
-                    final cellDate = DateTime(month.year, month.month, dayNumber);
-                    final count = dailyCounts[cellDate] ?? 0;
+                  // Day rows (1-31)
+                  ...List.generate(31, (dayIndex) {
+                    final dayNumber = dayIndex + 1;
 
-                    final isDark = theme.brightness == Brightness.dark;
-                    Color boxColor;
-                    Color? borderColor;
-                    if (count == 0) {
-                      // Empty boxes: light fill with strong border for definition
-                      boxColor = isDark
-                          ? theme.colorScheme.onSurface.withValues(alpha: 0.08)
-                          : Colors.grey[200]!;
-                      borderColor = isDark
-                          ? theme.colorScheme.onSurface.withValues(alpha: 0.3)
-                          : Colors.grey[400];
-                    } else if (count == 1) {
-                      boxColor = theme.colorScheme.primary.withValues(alpha: 0.3);
-                    } else if (count == 2) {
-                      boxColor = theme.colorScheme.primary.withValues(alpha: 0.6);
-                    } else {
-                      boxColor = theme.colorScheme.primary;
-                    }
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 2),
+                      child: Row(
+                        children: [
+                          // Day number
+                          SizedBox(
+                            width: 24,
+                            child: Text(
+                              '$dayNumber',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w500,
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                              ),
+                              textAlign: TextAlign.right,
+                            ),
+                          ),
+                          // Month cells
+                          ...months.map((month) {
+                            // Check if this day exists in this month
+                            final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
 
-                    return Expanded(
-                      child: Container(
-                        height: 14,
-                        margin: const EdgeInsets.all(1),
-                        decoration: BoxDecoration(
-                          color: boxColor,
-                          borderRadius: BorderRadius.circular(2),
-                          border: borderColor != null
-                              ? Border.all(color: borderColor, width: 1)
-                              : null,
-                        ),
+                            if (dayNumber > daysInMonth) {
+                              // Day doesn't exist in this month
+                              return Expanded(
+                                child: Container(
+                                  height: 14,
+                                  margin: const EdgeInsets.all(1),
+                                ),
+                              );
+                            }
+
+                            // Get the date for this cell
+                            final cellDate = DateTime(month.year, month.month, dayNumber);
+                            final count = dailyCounts[cellDate] ?? 0;
+
+                            final isDark = theme.brightness == Brightness.dark;
+                            Color boxColor;
+                            Color? borderColor;
+                            if (count == 0) {
+                              boxColor = isDark
+                                  ? theme.colorScheme.onSurface.withValues(alpha: 0.08)
+                                  : Colors.grey[200]!;
+                              borderColor = isDark
+                                  ? theme.colorScheme.onSurface.withValues(alpha: 0.3)
+                                  : Colors.grey[400];
+                            } else if (count == 1) {
+                              boxColor = theme.colorScheme.primary.withValues(alpha: 0.3);
+                            } else if (count == 2) {
+                              boxColor = theme.colorScheme.primary.withValues(alpha: 0.6);
+                            } else {
+                              boxColor = theme.colorScheme.primary;
+                            }
+
+                            return Expanded(
+                              child: Container(
+                                height: 14,
+                                margin: const EdgeInsets.all(1),
+                                decoration: BoxDecoration(
+                                  color: boxColor,
+                                  borderRadius: BorderRadius.circular(2),
+                                  border: borderColor != null
+                                      ? Border.all(color: borderColor, width: 1)
+                                      : null,
+                                ),
+                              ),
+                            );
+                          }),
+                        ],
                       ),
                     );
                   }),
@@ -1325,11 +2287,16 @@ class _TrendsScreenState extends State<TrendsScreen> {
           }),
 
           const SizedBox(height: 12),
+
+          // Legend
           Row(
             children: [
               Text(
                 'Less',
-                style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+                style: TextStyle(
+                  fontSize: 10,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
               ),
               const SizedBox(width: 6),
               _buildLegendBox(
@@ -1346,7 +2313,10 @@ class _TrendsScreenState extends State<TrendsScreen> {
               const SizedBox(width: 6),
               Text(
                 'More',
-                style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+                style: TextStyle(
+                  fontSize: 10,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
               ),
             ],
           ),
@@ -1635,48 +2605,164 @@ class _TrendsScreenState extends State<TrendsScreen> {
     final insights = _generateInsights(entries);
     if (insights.isEmpty) return const SizedBox.shrink();
 
-    return Column(
-      children: insights
-          .map((insight) => Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.primary.withValues(alpha: 0.05),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: theme.colorScheme.primary.withValues(alpha: 0.1),
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.lightbulb_outline_rounded,
-                size: 16,
-                color: theme.colorScheme.primary,
-                weight: 600,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                insight,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
-                  height: 1.4,
-                ),
-              ),
-            ),
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            theme.colorScheme.primary.withValues(alpha: 0.08),
+            theme.colorScheme.secondary.withValues(alpha: 0.08),
           ],
         ),
-      ))
-          .toList(),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: theme.colorScheme.primary.withValues(alpha: 0.15),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      theme.colorScheme.primary,
+                      theme.colorScheme.secondary,
+                    ],
+                  ),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.auto_awesome_rounded,
+                  size: 20,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Insights',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
+                    Text(
+                      'Personalized observations',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // Insights list
+          ...insights.asMap().entries.map((entry) {
+            final index = entry.key;
+            final insight = entry.value;
+            final isLast = index == insights.length - 1;
+
+            return Padding(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 12),
+              child: _buildInsightCard(theme, insight, index),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInsightCard(ThemeData theme, String insight, int index) {
+    // Determine icon based on insight content
+    IconData icon;
+    Color iconColor;
+
+    if (insight.contains('improving') || insight.contains('Keep it up')) {
+      icon = Icons.trending_up_rounded;
+      iconColor = const Color(0xFF4CAF50);
+    } else if (insight.contains('lower') || insight.contains('self-care')) {
+      icon = Icons.spa_rounded;
+      iconColor = const Color(0xFFFF9800);
+    } else if (insight.contains('logged') || insight.contains('tracking')) {
+      icon = Icons.check_circle_outline_rounded;
+      iconColor = theme.colorScheme.primary;
+    } else {
+      icon = Icons.lightbulb_outline_rounded;
+      iconColor = theme.colorScheme.primary;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Icon with colored background
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              icon,
+              size: 20,
+              color: iconColor,
+            ),
+          ),
+          const SizedBox(width: 12),
+
+          // Insight text
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  insight,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
+                    height: 1.5,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2099,6 +3185,21 @@ class _TrendsScreenState extends State<TrendsScreen> {
     final now = DateTime.now();
     AppLogger.debug('Current time: $now', tag: 'TrendsScreen.Filter');
 
+    // Handle custom date range
+    if (range == 'Custom' && _customStartDate != null && _customEndDate != null) {
+      final startDate = DateTime(_customStartDate!.year, _customStartDate!.month, _customStartDate!.day);
+      final endDate = DateTime(_customEndDate!.year, _customEndDate!.month, _customEndDate!.day);
+
+      final filtered = allEntries.where((e) {
+        final entryDate = DateTime(e.timestamp.year, e.timestamp.month, e.timestamp.day);
+        return (entryDate.isAfter(startDate) || entryDate.isAtSameMomentAs(startDate)) &&
+            (entryDate.isBefore(endDate) || entryDate.isAtSameMomentAs(endDate));
+      }).toList();
+
+      AppLogger.success('Custom range: ${filtered.length} entries between $startDate and $endDate', tag: 'TrendsScreen.Filter');
+      return filtered;
+    }
+
     DateTime cutoff;
 
     switch (range) {
@@ -2119,6 +3220,10 @@ class _TrendsScreenState extends State<TrendsScreen> {
             tag: 'TrendsScreen.Filter'
         );
         return allEntries;
+      case 'Custom':
+      // If custom is selected but no dates set, return empty
+        AppLogger.warning('Custom range selected but no dates set', tag: 'TrendsScreen.Filter');
+        return [];
       default:
         cutoff = now.subtract(const Duration(days: 7));
     }

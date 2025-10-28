@@ -587,57 +587,63 @@ class _CalendarScreenState extends State<CalendarScreen>
 
     final initialIndex = availableYears.indexOf(_selectedYear);
 
-    return Material(
-      elevation: 8,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        height: 200,
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
+    return StatefulBuilder(
+      builder: (context, setPickerState) {
+        int localSelectedYear = _selectedYear;
+
+        return Material(
+          elevation: 8,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: theme.colorScheme.primary.withValues(alpha: 0.3),
-            width: 1.5,
-          ),
-        ),
-        child: ListWheelScrollView(
-          controller: FixedExtentScrollController(
-            initialItem: initialIndex >= 0 ? initialIndex : availableYears.length - 1,
-          ),
-          itemExtent: 50,
-          diameterRatio: 1.5,
-          physics: const FixedExtentScrollPhysics(),
-          onSelectedItemChanged: (index) {
-            HapticFeedback.selectionClick();
-            final newYear = availableYears[index];
-
-            // Only update the selected year in state, don't rebuild everything yet
-            // This prevents lag during scrolling
-            if (_selectedYear != newYear) {
-              setState(() {
-                _selectedYear = newYear;
-              });
-            }
-          },
-          children: List.generate(availableYears.length, (index) {
-            final year = availableYears[index];
-            final isSelected = year == _selectedYear;
-
-            return Center(
-              child: Text(
-                '$year',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  color: isSelected
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                  fontSize: isSelected ? 18 : 16,
-                ),
+          child: Container(
+            height: 200,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                width: 1.5,
               ),
-            );
-          }),
-        ),
-      ),
+            ),
+            child: ListWheelScrollView(
+              controller: FixedExtentScrollController(
+                initialItem: initialIndex >= 0 ? initialIndex : availableYears.length - 1,
+              ),
+              itemExtent: 50,
+              diameterRatio: 1.5,
+              physics: const FixedExtentScrollPhysics(),
+              onSelectedItemChanged: (index) {
+                HapticFeedback.selectionClick();
+                final newYear = availableYears[index];
+
+                // Update local state only (doesn't rebuild parent)
+                setPickerState(() {
+                  localSelectedYear = newYear;
+                });
+
+                // Update the actual selected year without calling setState
+                _selectedYear = newYear;
+              },
+              children: List.generate(availableYears.length, (index) {
+                final year = availableYears[index];
+                final isSelected = year == localSelectedYear;
+
+                return Center(
+                  child: Text(
+                    '$year',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      color: isSelected
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                      fontSize: isSelected ? 18 : 16,
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+        );
+      },
     );
   }
 

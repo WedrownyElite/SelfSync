@@ -74,9 +74,6 @@ class MoodService extends ChangeNotifier {
     final endDate2025 = DateTime(2025, 10, 27);
     final totalDays = endDate2025.difference(startDate2023).inDays;
 
-    // Generate ~273 scattered entries across 2023-2025 (excluding October 2025)
-    final octoberStart = DateTime(2025, 10, 1);
-
     // Calculate days to scatter (excluding October 2025)
     final daysToScatter = totalDays - 27; // Exclude October 2025 days
 
