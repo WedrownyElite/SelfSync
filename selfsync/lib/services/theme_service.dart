@@ -275,4 +275,6 @@ class GradientColors {
     required this.secondary,
     required this.moodGradient,
   });
+
+  List<Color> get gradientColors => [primary, secondary];
 }

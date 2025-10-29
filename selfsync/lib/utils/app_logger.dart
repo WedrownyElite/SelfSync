@@ -56,6 +56,16 @@ class AppLogger {
     _log(levelInfo, '✅', message, tag: tag);
   }
 
+  /// Log analytics events
+  static void analytics(String message, {String? tag}) {
+    _log(levelInfo, '📊', message, tag: tag ?? 'Analytics');
+  }
+
+  /// Log performance metrics
+  static void performance(String message, {String? tag}) {
+    _log(levelInfo, '⚡', message, tag: tag ?? 'Performance');
+  }
+
   /// Log navigation events
   static void navigation(String from, String to) {
     _log(levelDebug, '🧭', 'Navigation: $from → $to', tag: 'Navigation');

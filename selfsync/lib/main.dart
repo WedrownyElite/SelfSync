@@ -5,24 +5,49 @@ import 'screens/calendar_screen.dart';
 import 'screens/mood_log_screen.dart';
 import 'screens/trends_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/onboarding_screen.dart';
 import 'services/mood_service.dart';
 import 'services/theme_service.dart';
+import 'services/onboarding_service.dart';
+import 'services/analytics_service.dart';
 import 'widgets/modern_nav_bar.dart';
 import 'widgets/side_drawer.dart';
 
-void main() {
+void main() async {
+  // Ensure Flutter bindings are initialized
+  WidgetsFlutterBinding.ensureInitialized();
+
   // Log app startup
+  final startTime = DateTime.now();
   AppLogger.separator(label: 'SELF SYNC APP STARTUP');
   AppLogger.lifecycle('App starting...', tag: 'Main');
 
-  runApp(const SelfSyncApp());
-  
+  // Initialize analytics service first
+  final analyticsService = AnalyticsService();
+
+  // Set up global error handling
+  FlutterError.onError = (FlutterErrorDetails details) {
+    analyticsService.logFlutterError(details);
+  };
+
+  runApp(SelfSyncApp(
+    analyticsService: analyticsService,
+    startTime: startTime,
+  ));
+
   AppLogger.lifecycle('App launched successfully', tag: 'Main');
   AppLogger.separator();
 }
 
 class SelfSyncApp extends StatefulWidget {
-  const SelfSyncApp({super.key});
+  final AnalyticsService analyticsService;
+  final DateTime startTime;
+
+  const SelfSyncApp({
+    super.key,
+    required this.analyticsService,
+    required this.startTime,
+  });
 
   @override
   State<SelfSyncApp> createState() => _SelfSyncAppState();
@@ -30,17 +55,45 @@ class SelfSyncApp extends StatefulWidget {
 
 class _SelfSyncAppState extends State<SelfSyncApp> {
   late final ThemeService _themeService;
+  late final OnboardingService _onboardingService;
+  bool _isInitialized = false;
 
   @override
   void initState() {
     super.initState();
     _themeService = ThemeService();
+    _onboardingService = OnboardingService();
+
     _themeService.addListener(_onThemeChanged);
+    _onboardingService.addListener(_onOnboardingChanged);
+
+    // Track app startup time
+    _trackStartupTime();
+
+    // Wait for services to initialize
+    _waitForInitialization();
+  }
+
+  void _trackStartupTime() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final duration = DateTime.now().difference(widget.startTime);
+      widget.analyticsService.trackAppStartup(duration);
+      AppLogger.performance('App startup took ${duration.inMilliseconds}ms');
+    });
+  }
+
+  Future<void> _waitForInitialization() async {
+    // Give services time to load
+    await Future.delayed(const Duration(milliseconds: 100));
+    setState(() {
+      _isInitialized = true;
+    });
   }
 
   @override
   void dispose() {
     _themeService.removeListener(_onThemeChanged);
+    _onboardingService.removeListener(_onOnboardingChanged);
     super.dispose();
   }
 
@@ -50,9 +103,32 @@ class _SelfSyncAppState extends State<SelfSyncApp> {
     });
   }
 
+  void _onOnboardingChanged() {
+    setState(() {
+      // Rebuild to show/hide onboarding
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     AppLogger.lifecycle('Building SelfSyncApp widget', tag: 'SelfSyncApp');
+
+    if (!_isInitialized) {
+      // Show loading screen while initializing
+      return MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(
+          backgroundColor: Colors.white,
+          body: Center(
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(
+                _themeService.selectedGradient.colors.primary,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     return MaterialApp(
       title: 'Self Sync',
@@ -60,17 +136,32 @@ class _SelfSyncAppState extends State<SelfSyncApp> {
       theme: _themeService.getLightTheme(),
       darkTheme: _themeService.getDarkTheme(),
       themeMode: _themeService.themeMode,
-      home: MainScreen(themeService: _themeService),
+      home: _onboardingService.hasCompletedOnboarding
+          ? MainScreen(
+        themeService: _themeService,
+        analyticsService: widget.analyticsService,
+      )
+          : OnboardingFlow(
+        onboardingService: _onboardingService,
+        analyticsService: widget.analyticsService,
+        onComplete: () {
+          setState(() {
+            // Refresh to show main screen
+          });
+        },
+      ),
     );
   }
 }
 
 class MainScreen extends StatefulWidget {
   final ThemeService themeService;
+  final AnalyticsService analyticsService;
 
   const MainScreen({
     super.key,
     required this.themeService,
+    required this.analyticsService,
   });
 
   @override
@@ -83,59 +174,39 @@ class _MainScreenState extends State<MainScreen> {
   late final SideDrawerController _drawerController;
   DateTime? _targetDate;
 
-  // ⚡ OPTIMIZATION: Cache CalendarScreen and TrendsScreen
-  // MoodLogScreen needs to rebuild when _targetDate changes, so we don't cache it
-  late final Widget _calendarScreen;
-  late final Widget _trendsScreen;
+  // Cache screens to avoid rebuilds
+  late final CalendarScreen _calendarScreen;
+  late final TrendsScreen _trendsScreen;
 
   @override
   void initState() {
     super.initState();
+    AppLogger.lifecycle('MainScreen initialized', tag: 'MainScreen');
 
-    AppLogger.lifecycle('MainScreen initializing', tag: 'MainScreen');
+    _moodService = MoodService();
+    _drawerController = SideDrawerController();
 
-    // Initialize services
-    try {
-      _moodService = MoodService();
-      AppLogger.success('MoodService initialized', tag: 'MainScreen');
-    } catch (e, stackTrace) {
-      AppLogger.error('Failed to initialize MoodService',
-          tag: 'MainScreen', error: e, stackTrace: stackTrace);
-    }
-
-    try {
-      _drawerController = SideDrawerController();
-      AppLogger.success('SideDrawerController initialized', tag: 'MainScreen');
-    } catch (e, stackTrace) {
-      AppLogger.error('Failed to initialize SideDrawerController',
-          tag: 'MainScreen', error: e, stackTrace: stackTrace);
-    }
-
-    // ⚡ OPTIMIZATION: Initialize screens that don't need to rebuild
+    // Initialize cached screens
     _calendarScreen = CalendarScreen(
       moodService: _moodService,
-      onDateSelected: _onDateSelected,
+      onDateSelected: (date) => _navigateToDate(1, date),
       drawerController: _drawerController,
       themeService: widget.themeService,
     );
 
     _trendsScreen = TrendsScreen(
       moodService: _moodService,
-      onNavigateToTab: _onNavigateToTab,
       drawerController: _drawerController,
       themeService: widget.themeService,
     );
 
-    AppLogger.prettyPrint({
-      'Initial tab index': _currentIndex.toString(),
-      'Tab name': _getTabName(_currentIndex),
-      'Target date': _targetDate?.toString() ?? 'null',
-    });
+    // Track initial screen view
+    widget.analyticsService.trackScreenView(_getTabName(_currentIndex));
   }
 
   @override
   void dispose() {
-    AppLogger.lifecycle('MainScreen disposing', tag: 'MainScreen');
+    AppLogger.lifecycle('MainScreen disposed', tag: 'MainScreen');
     super.dispose();
   }
 
@@ -153,33 +224,25 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   void _onNavigationTap(int index) {
-    AppLogger.info('Tab tapped: ${_getTabName(index)}', tag: 'Navigation');
+    AppLogger.info(
+      'Navigation tab tapped: ${_getTabName(index)}',
+      tag: 'MainScreen',
+    );
 
     setState(() {
+      _targetDate = null;
       _currentIndex = index;
-      if (index != 0) {
-        _targetDate = null;
-      }
     });
 
-    AppLogger.success('Navigation completed to ${_getTabName(index)}',
-        tag: 'Navigation');
+    widget.analyticsService.trackScreenView(_getTabName(index));
+
+    AppLogger.success(
+      'Navigated to ${_getTabName(index)}',
+      tag: 'MainScreen',
+    );
   }
 
-  void _onDateSelected(DateTime date) {
-    AppLogger.info('Date selected: $date', tag: 'Calendar');
-
-    setState(() {
-      _targetDate = date;
-      _currentIndex = 1;
-    });
-
-    AppLogger.success('Switched to Mood Log with target date: $date',
-        tag: 'Calendar');
-  }
-
-  /// Handle navigation from Trends screen to Mood Log with specific date
-  void _onNavigateToTab(int tabIndex, DateTime? date) {
+  void _navigateToDate(int tabIndex, DateTime? date) {
     AppLogger.info(
       'Navigation requested to tab $tabIndex with date: ${date?.toString() ?? "none"}',
       tag: 'MainScreen',
@@ -189,6 +252,8 @@ class _MainScreenState extends State<MainScreen> {
       _targetDate = date;
       _currentIndex = tabIndex;
     });
+
+    widget.analyticsService.trackScreenView(_getTabName(tabIndex));
 
     AppLogger.success(
       'Navigated to ${_getTabName(tabIndex)} with date: ${date?.toString() ?? "none"}',
@@ -203,6 +268,7 @@ class _MainScreenState extends State<MainScreen> {
       MaterialPageRoute(
         builder: (context) => SettingsScreen(
           themeService: widget.themeService,
+          analyticsService: widget.analyticsService,
           drawerController: _drawerController,
         ),
       ),

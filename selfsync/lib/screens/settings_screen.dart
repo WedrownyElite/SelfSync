@@ -1,15 +1,17 @@
 ﻿import 'package:flutter/material.dart';
 import '../services/theme_service.dart';
+import '../services/analytics_service.dart';
 import '../widgets/side_drawer.dart';
-import '../utils/performance_test_helper.dart';
 
 class SettingsScreen extends StatefulWidget {
   final ThemeService themeService;
+  final AnalyticsService analyticsService;
   final SideDrawerController drawerController;
 
   const SettingsScreen({
     super.key,
     required this.themeService,
+    required this.analyticsService,
     required this.drawerController,
   });
 
@@ -19,120 +21,84 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   @override
+  void initState() {
+    super.initState();
+    widget.themeService.addListener(_onThemeChanged);
+    widget.analyticsService.addListener(_onAnalyticsChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.themeService.removeListener(_onThemeChanged);
+    widget.analyticsService.removeListener(_onAnalyticsChanged);
+    super.dispose();
+  }
+
+  void _onThemeChanged() {
+    setState(() {});
+  }
+
+  void _onAnalyticsChanged() {
+    setState(() {});
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
-        child: Column(
-          children: [
-            _buildHeader(theme),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  const SizedBox(height: 8),
-                  _buildThemeModeSection(theme),
-                  const SizedBox(height: 24),
-                  _buildColorGradientSection(theme),
-
-                  _buildDebugPanel(theme),
-                  
-                  const SizedBox(height: 40),
-                ],
-              ),
-            ),
-          ],
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildHeader(theme),
+              const SizedBox(height: 24),
+              _buildThemeModeSection(theme),
+              const SizedBox(height: 16),
+              _buildColorGradientSection(theme),
+              const SizedBox(height: 16),
+              _buildPrivacySection(theme),
+              const SizedBox(height: 24),
+              _buildAboutSection(theme),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildDebugPanel(ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      margin: const EdgeInsets.only(top: 24),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.errorContainer,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            '🔧 Performance Testing',
-            style: theme.textTheme.titleMedium?.copyWith(
-              color: theme.colorScheme.onErrorContainer,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          ElevatedButton.icon(
-            onPressed: () {
-              PerformanceTestHelper.printReport();
-            },
-            icon: const Icon(Icons.analytics),
-            label: const Text('Print Performance Report'),
-          ),
-
-          const SizedBox(height: 8),
-
-          ElevatedButton.icon(
-            onPressed: () {
-              PerformanceTestHelper.reset();
-            },
-            icon: const Icon(Icons.refresh),
-            label: const Text('Reset Counters'),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildHeader(ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back_ios_rounded),
-            onPressed: () => Navigator.of(context).pop(),
-            tooltip: 'Back',
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Settings',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+    return Row(
+      children: [
+        IconButton(
+          icon: const Icon(Icons.close_rounded),
+          onPressed: () => Navigator.of(context).pop(),
+          tooltip: 'Back',
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Settings',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
                 ),
-                Text(
-                  'Customize your experience',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                  ),
+              ),
+              Text(
+                'Customize your experience',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -161,97 +127,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 color: theme.colorScheme.primary,
               ),
               const SizedBox(width: 12),
-              Text(
-                'Appearance',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildThemeOption(
-            theme,
-            'Light Mode',
-            'Use light theme',
-            Icons.light_mode_rounded,
-            ThemeMode.light,
-          ),
-          const SizedBox(height: 12),
-          _buildThemeOption(
-            theme,
-            'Dark Mode',
-            'Use dark theme',
-            Icons.dark_mode_rounded,
-            ThemeMode.dark,
-          ),
-          const SizedBox(height: 12),
-          _buildThemeOption(
-            theme,
-            'System Default',
-            'Follow system settings',
-            Icons.settings_suggest_rounded,
-            ThemeMode.system,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildThemeOption(
-      ThemeData theme,
-      String title,
-      String subtitle,
-      IconData icon,
-      ThemeMode mode,
-      ) {
-    final isSelected = widget.themeService.themeMode == mode;
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () => widget.themeService.setThemeMode(mode),
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? theme.colorScheme.primary.withValues(alpha: 0.1)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isSelected
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.onSurface.withValues(alpha: 0.1),
-              width: isSelected ? 2 : 1,
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                icon,
-                size: 24,
-                color: isSelected
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.onSurface.withValues(alpha: 0.6),
-              ),
-              const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      title,
-                      style: theme.textTheme.bodyLarge?.copyWith(
+                      'Theme Mode',
+                      style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w600,
-                        color: isSelected
-                            ? theme.colorScheme.primary
-                            : theme.colorScheme.onSurface,
                       ),
                     ),
-                    const SizedBox(height: 2),
                     Text(
-                      subtitle,
+                      'Choose your display preference',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                       ),
@@ -259,14 +146,95 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ],
                 ),
               ),
-              if (isSelected)
-                Icon(
-                  Icons.check_circle_rounded,
-                  color: theme.colorScheme.primary,
-                  size: 24,
-                ),
             ],
           ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _buildThemeModeOption(
+                  theme: theme,
+                  mode: ThemeMode.light,
+                  icon: Icons.light_mode_rounded,
+                  label: 'Light',
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildThemeModeOption(
+                  theme: theme,
+                  mode: ThemeMode.dark,
+                  icon: Icons.dark_mode_rounded,
+                  label: 'Dark',
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildThemeModeOption(
+                  theme: theme,
+                  mode: ThemeMode.system,
+                  icon: Icons.auto_mode_rounded,
+                  label: 'Auto',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildThemeModeOption({
+    required ThemeData theme,
+    required ThemeMode mode,
+    required IconData icon,
+    required String label,
+  }) {
+    final isSelected = widget.themeService.themeMode == mode;
+
+    return InkWell(
+      onTap: () async {
+        await widget.themeService.setThemeMode(mode);
+        widget.analyticsService.trackThemeChange(
+          mode.toString(),
+          widget.themeService.selectedGradient.toString(),
+        );
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? theme.colorScheme.primaryContainer.withValues(alpha: 0.5)
+              : theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected
+                ? theme.colorScheme.primary
+                : theme.colorScheme.outline.withValues(alpha: 0.2),
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              icon,
+              size: 24,
+              color: isSelected
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: isSelected
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -297,102 +265,285 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 color: theme.colorScheme.primary,
               ),
               const SizedBox(width: 12),
-              Text(
-                'Mood Colors',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Color Theme',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      'Pick your favorite colors',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Text(
-            'Choose your mood rating color palette',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-            ),
-          ),
           const SizedBox(height: 16),
-          ...ColorGradientOption.values.map((gradient) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _buildColorGradientOption(theme, gradient),
-            );
-          }),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: ColorGradientOption.values.map((gradient) {
+              return _buildColorOption(theme: theme, gradient: gradient);
+            }).toList(),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildColorGradientOption(
-      ThemeData theme,
-      ColorGradientOption gradient,
-      ) {
+  Widget _buildColorOption({
+    required ThemeData theme,
+    required ColorGradientOption gradient,
+  }) {
     final isSelected = widget.themeService.selectedGradient == gradient;
-    final colors = gradient.colors;
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () => widget.themeService.setColorGradient(gradient),
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? theme.colorScheme.primary.withValues(alpha: 0.05)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isSelected
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.onSurface.withValues(alpha: 0.1),
-              width: isSelected ? 2 : 1,
-            ),
+    return InkWell(
+      onTap: () async {
+        await widget.themeService.setColorGradient(gradient);
+        widget.analyticsService.trackThemeChange(
+          widget.themeService.themeMode.toString(),
+          gradient.toString(),
+        );
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: 72,
+        height: 72,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: gradient.colors.gradientColors,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
-          child: Row(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected
+                ? theme.colorScheme.onSurface
+                : Colors.transparent,
+            width: 3,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: gradient.colors.primary.withValues(alpha: 0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: isSelected
+            ? Icon(
+          Icons.check_rounded,
+          color: theme.colorScheme.onPrimary,
+          size: 32,
+        )
+            : null,
+      ),
+    );
+  }
+
+  Widget _buildPrivacySection(ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              // Gradient preview with mood colors
-              Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: colors.moodGradient,
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                  ),
-                  borderRadius: BorderRadius.circular(8),
-                  boxShadow: [
-                    BoxShadow(
-                      color: colors.primary.withValues(alpha: 0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
+              Icon(
+                Icons.privacy_tip_rounded,
+                size: 24,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Privacy & Analytics',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      'Control your data sharing',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                      ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Text(
-                  colors.name,
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: isSelected
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.onSurface,
+            ],
+          ),
+          const SizedBox(height: 20),
+          _buildPrivacyToggle(
+            theme: theme,
+            title: 'Usage Analytics',
+            description: 'Help improve the app with anonymous usage data',
+            value: widget.analyticsService.analyticsEnabled,
+            onChanged: (value) {
+              widget.analyticsService.setAnalyticsEnabled(value);
+            },
+          ),
+          const SizedBox(height: 16),
+          _buildPrivacyToggle(
+            theme: theme,
+            title: 'Crash Reports',
+            description: 'Automatically send error reports to fix issues',
+            value: widget.analyticsService.crashReportingEnabled,
+            onChanged: (value) {
+              widget.analyticsService.setCrashReportingEnabled(value);
+            },
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.info_outline_rounded,
+                  size: 20,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'All mood data stays on your device. These settings only affect anonymous usage statistics.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                      height: 1.4,
+                    ),
                   ),
                 ),
-              ),
-              if (isSelected)
-                Icon(
-                  Icons.check_circle_rounded,
-                  color: theme.colorScheme.primary,
-                  size: 24,
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPrivacyToggle({
+    required ThemeData theme,
+    required String title,
+    required String description,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  fontWeight: FontWeight.w600,
                 ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                description,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  height: 1.4,
+                ),
+              ),
             ],
           ),
         ),
+        const SizedBox(width: 12),
+        Switch(
+          value: value,
+          onChanged: onChanged,
+          activeTrackColor: theme.colorScheme.primary,
+          activeThumbColor: theme.colorScheme.onPrimary,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAboutSection(ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.info_rounded,
+                size: 24,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'About',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Self Sync',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Version 1.1.0-alpha',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Track your mood, understand your patterns, nurture your well-being.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+              height: 1.5,
+            ),
+          ),
+        ],
       ),
     );
   }
