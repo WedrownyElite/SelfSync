@@ -3,11 +3,17 @@
 class ModernNavBar extends StatelessWidget {
   final int currentIndex;
   final Function(int) onTap;
+  final GlobalKey? calendarKey;
+  final GlobalKey? diaryKey;
+  final GlobalKey? trendsKey;
 
   const ModernNavBar({
     super.key,
     required this.currentIndex,
     required this.onTap,
+    this.calendarKey,
+    this.diaryKey,
+    this.trendsKey,
   });
 
   @override
@@ -39,6 +45,7 @@ class ModernNavBar extends StatelessWidget {
                 index: 0,
                 isSelected: currentIndex == 0,
                 color: theme.colorScheme.secondary,
+                itemKey: calendarKey,
               ),
               _buildNavItem(
                 context: context,
@@ -47,6 +54,7 @@ class ModernNavBar extends StatelessWidget {
                 index: 1,
                 isSelected: currentIndex == 1,
                 color: theme.colorScheme.primary,
+                itemKey: diaryKey,
               ),
               _buildNavItem(
                 context: context,
@@ -55,6 +63,7 @@ class ModernNavBar extends StatelessWidget {
                 index: 2,
                 isSelected: currentIndex == 2,
                 color: const Color(0xFF4CAF50),
+                itemKey: trendsKey,
               ),
             ],
           ),
@@ -70,9 +79,11 @@ class ModernNavBar extends StatelessWidget {
     required int index,
     required bool isSelected,
     required Color color,
+    GlobalKey? itemKey,
   }) {
     return Expanded(
       child: InkWell(
+        key: itemKey,
         onTap: () => onTap(index),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),

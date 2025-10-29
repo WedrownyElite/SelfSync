@@ -12,6 +12,7 @@ import 'services/onboarding_service.dart';
 import 'services/analytics_service.dart';
 import 'widgets/modern_nav_bar.dart';
 import 'widgets/side_drawer.dart';
+import 'widgets/tutorial_overlay.dart';
 
 void main() async {
   // Ensure Flutter bindings are initialized
@@ -105,7 +106,7 @@ class _SelfSyncAppState extends State<SelfSyncApp> {
 
   void _onOnboardingChanged() {
     setState(() {
-      // Rebuild to show/hide onboarding
+      // Rebuild to show/hide onboarding or tutorial
     });
   }
 
@@ -140,13 +141,14 @@ class _SelfSyncAppState extends State<SelfSyncApp> {
           ? MainScreen(
         themeService: _themeService,
         analyticsService: widget.analyticsService,
+        onboardingService: _onboardingService,
       )
           : OnboardingFlow(
         onboardingService: _onboardingService,
         analyticsService: widget.analyticsService,
         onComplete: () {
           setState(() {
-            // Refresh to show main screen
+            // Refresh to show main screen with tutorial
           });
         },
       ),
@@ -157,11 +159,13 @@ class _SelfSyncAppState extends State<SelfSyncApp> {
 class MainScreen extends StatefulWidget {
   final ThemeService themeService;
   final AnalyticsService analyticsService;
+  final OnboardingService onboardingService;
 
   const MainScreen({
     super.key,
     required this.themeService,
     required this.analyticsService,
+    required this.onboardingService,
   });
 
   @override
@@ -177,6 +181,11 @@ class _MainScreenState extends State<MainScreen> {
   // Cache screens to avoid rebuilds
   late final CalendarScreen _calendarScreen;
   late final TrendsScreen _trendsScreen;
+
+  // GlobalKeys for tutorial targets
+  final GlobalKey _calendarTabKey = GlobalKey();
+  final GlobalKey _diaryTabKey = GlobalKey();
+  final GlobalKey _trendsTabKey = GlobalKey();
 
   @override
   void initState() {
@@ -202,6 +211,61 @@ class _MainScreenState extends State<MainScreen> {
 
     // Track initial screen view
     widget.analyticsService.trackScreenView(_getTabName(_currentIndex));
+
+    // Show tutorial after first frame if needed
+    if (widget.onboardingService.shouldShowTutorial) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showTutorial();
+      });
+    }
+  }
+
+  void _showTutorial() {
+    widget.analyticsService.trackEvent('tutorial_started');
+
+    final tutorialSteps = [
+      TutorialStep(
+        title: 'Welcome to Self Sync!',
+        description: 'Let\'s take a quick tour to help you get started with tracking your mood.',
+        icon: Icons.waving_hand_rounded,
+      ),
+      TutorialStep(
+        title: 'Add Mood Entries',
+        description: 'Tap here to log how you\'re feeling. You can rate your mood from 1-10 and add notes about what affected it.',
+        icon: Icons.edit_note_rounded,
+        targetKey: _diaryTabKey,
+      ),
+      TutorialStep(
+        title: 'View Your Calendar',
+        description: 'See your mood history at a glance. Each day shows your average mood with color coding.',
+        icon: Icons.calendar_month_rounded,
+        targetKey: _calendarTabKey,
+      ),
+      TutorialStep(
+        title: 'Analyze Trends',
+        description: 'Discover patterns in your emotional well-being with charts and insights over different time periods.',
+        icon: Icons.insights_rounded,
+        targetKey: _trendsTabKey,
+      ),
+      TutorialStep(
+        title: 'You\'re All Set!',
+        description: 'Start tracking your mood consistently to unlock meaningful insights about your emotional patterns. Tap the menu icon in the top-left to access settings anytime.',
+        icon: Icons.check_circle_rounded,
+      ),
+    ];
+
+    TutorialController.show(
+      context,
+      steps: tutorialSteps,
+      onComplete: () async {
+        await widget.onboardingService.completeTutorial();
+        widget.analyticsService.trackEvent('tutorial_completed');
+      },
+      onSkip: () async {
+        await widget.onboardingService.completeTutorial();
+        widget.analyticsService.trackEvent('tutorial_skipped');
+      },
+    );
   }
 
   @override
@@ -313,6 +377,9 @@ class _MainScreenState extends State<MainScreen> {
         bottomNavigationBar: ModernNavBar(
           currentIndex: _currentIndex,
           onTap: _onNavigationTap,
+          calendarKey: _calendarTabKey,
+          diaryKey: _diaryTabKey,
+          trendsKey: _trendsTabKey,
         ),
       ),
     );
