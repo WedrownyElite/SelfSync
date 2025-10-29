@@ -1,8 +1,6 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dart:ui';
 
-/// Interactive tutorial overlay that shows step-by-step guidance
 class TutorialOverlay extends StatefulWidget {
   final List<TutorialStep> steps;
   final VoidCallback onComplete;
@@ -106,17 +104,13 @@ class _TutorialOverlayState extends State<TutorialOverlay>
       color: Colors.transparent,
       child: Stack(
         children: [
-          // Backdrop with blur
-          BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3),
-            child: Container(
-              color: Colors.black.withValues(alpha: 0.7),
-            ),
+          // Dark overlay (NO BLUR)
+          Container(
+            color: Colors.black.withValues(alpha: 0.7),
           ),
 
           // Highlighted area (spotlight effect)
-          if (step.targetKey != null)
-            _buildSpotlight(step.targetKey!),
+          if (step.targetKey != null) _buildSpotlight(step.targetKey!),
 
           // Tutorial content
           AnimatedBuilder(
@@ -142,13 +136,13 @@ class _TutorialOverlayState extends State<TutorialOverlay>
             child: TextButton(
               onPressed: _skip,
               style: TextButton.styleFrom(
-                backgroundColor: Colors.white.withValues(alpha: 0.2),
+                backgroundColor: theme.colorScheme.surface.withValues(alpha: 0.9),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               ),
-              child: const Text(
+              child: Text(
                 'Skip',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: theme.colorScheme.onSurface,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -160,7 +154,8 @@ class _TutorialOverlayState extends State<TutorialOverlay>
   }
 
   Widget _buildSpotlight(GlobalKey targetKey) {
-    final renderBox = targetKey.currentContext?.findRenderObject() as RenderBox?;
+    final renderBox =
+    targetKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox == null) return const SizedBox.shrink();
 
     final position = renderBox.localToGlobal(Offset.zero);
@@ -191,10 +186,10 @@ class _TutorialOverlayState extends State<TutorialOverlay>
   }
 
   Widget _buildTutorialContent(ThemeData theme, TutorialStep step) {
-    final renderBox = step.targetKey?.currentContext?.findRenderObject() as RenderBox?;
+    final renderBox =
+    step.targetKey?.currentContext?.findRenderObject() as RenderBox?;
     final screenSize = MediaQuery.of(context).size;
 
-    // Default position if no target
     Alignment alignment = Alignment.center;
     EdgeInsets margin = const EdgeInsets.all(32);
 
@@ -204,9 +199,7 @@ class _TutorialOverlayState extends State<TutorialOverlay>
       final targetCenter = position.dy + size.height / 2;
       final screenCenter = screenSize.height / 2;
 
-      // Position tooltip above or below target based on space
       if (targetCenter < screenCenter) {
-        // Target in top half - show tooltip below
         alignment = Alignment.topCenter;
         margin = EdgeInsets.only(
           top: position.dy + size.height + 24,
@@ -214,7 +207,6 @@ class _TutorialOverlayState extends State<TutorialOverlay>
           right: 24,
         );
       } else {
-        // Target in bottom half - show tooltip above
         alignment = Alignment.bottomCenter;
         margin = EdgeInsets.only(
           bottom: screenSize.height - position.dy + 24,
@@ -248,7 +240,6 @@ class _TutorialOverlayState extends State<TutorialOverlay>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Icon
                 if (step.icon != null) ...[
                   Container(
                     width: 56,
@@ -270,8 +261,6 @@ class _TutorialOverlayState extends State<TutorialOverlay>
                   ),
                   const SizedBox(height: 16),
                 ],
-
-                // Title
                 Text(
                   step.title,
                   style: theme.textTheme.titleLarge?.copyWith(
@@ -280,8 +269,6 @@ class _TutorialOverlayState extends State<TutorialOverlay>
                   ),
                 ),
                 const SizedBox(height: 12),
-
-                // Description
                 Text(
                   step.description,
                   style: theme.textTheme.bodyLarge?.copyWith(
@@ -289,8 +276,6 @@ class _TutorialOverlayState extends State<TutorialOverlay>
                     height: 1.5,
                   ),
                 ),
-
-                // Progress indicator
                 const SizedBox(height: 20),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -302,7 +287,8 @@ class _TutorialOverlayState extends State<TutorialOverlay>
                       decoration: BoxDecoration(
                         color: _currentStep == index
                             ? theme.colorScheme.primary
-                            : theme.colorScheme.onSurface.withValues(alpha: 0.3),
+                            : theme.colorScheme.onSurface
+                            .withValues(alpha: 0.3),
                         borderRadius: BorderRadius.circular(4),
                       ),
                     );
@@ -329,30 +315,29 @@ class _TutorialOverlayState extends State<TutorialOverlay>
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            // Back button
             if (!isFirstStep)
               IconButton(
                 onPressed: _previousStep,
                 style: IconButton.styleFrom(
-                  backgroundColor: Colors.white.withValues(alpha: 0.2),
+                  backgroundColor:
+                  theme.colorScheme.surface.withValues(alpha: 0.9),
                   padding: const EdgeInsets.all(16),
                 ),
-                icon: const Icon(
+                icon: Icon(
                   Icons.arrow_back_rounded,
-                  color: Colors.white,
+                  color: theme.colorScheme.onSurface,
                   size: 24,
                 ),
               )
             else
               const SizedBox(width: 56),
-
-            // Next/Done button
             ElevatedButton(
               onPressed: _nextStep,
               style: ElevatedButton.styleFrom(
                 backgroundColor: theme.colorScheme.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                foregroundColor: theme.colorScheme.onPrimary,
+                padding:
+                const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -370,7 +355,9 @@ class _TutorialOverlayState extends State<TutorialOverlay>
                   ),
                   const SizedBox(width: 8),
                   Icon(
-                    isLastStep ? Icons.check_rounded : Icons.arrow_forward_rounded,
+                    isLastStep
+                        ? Icons.check_rounded
+                        : Icons.arrow_forward_rounded,
                     size: 20,
                   ),
                 ],
@@ -383,7 +370,6 @@ class _TutorialOverlayState extends State<TutorialOverlay>
   }
 }
 
-/// Represents a single step in the tutorial
 class TutorialStep {
   final String title;
   final String description;
@@ -398,18 +384,16 @@ class TutorialStep {
   });
 }
 
-/// Controller to show tutorial overlay
 class TutorialController {
   static OverlayEntry? _overlayEntry;
 
-  /// Show tutorial overlay
   static void show(
       BuildContext context, {
         required List<TutorialStep> steps,
         required VoidCallback onComplete,
         VoidCallback? onSkip,
       }) {
-    hide(); // Remove any existing overlay
+    hide();
 
     _overlayEntry = OverlayEntry(
       builder: (context) => TutorialOverlay(
@@ -430,7 +414,6 @@ class TutorialController {
     Overlay.of(context).insert(_overlayEntry!);
   }
 
-  /// Hide tutorial overlay
   static void hide() {
     _overlayEntry?.remove();
     _overlayEntry = null;

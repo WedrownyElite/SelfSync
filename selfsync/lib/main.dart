@@ -5,7 +5,6 @@ import 'screens/calendar_screen.dart';
 import 'screens/mood_log_screen.dart';
 import 'screens/trends_screen.dart';
 import 'screens/settings_screen.dart';
-import 'screens/onboarding_screen.dart';
 import 'services/mood_service.dart';
 import 'services/theme_service.dart';
 import 'services/onboarding_service.dart';
@@ -15,18 +14,14 @@ import 'widgets/side_drawer.dart';
 import 'widgets/tutorial_overlay.dart';
 
 void main() async {
-  // Ensure Flutter bindings are initialized
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Log app startup
   final startTime = DateTime.now();
   AppLogger.separator(label: 'SELF SYNC APP STARTUP');
   AppLogger.lifecycle('App starting...', tag: 'Main');
 
-  // Initialize analytics service first
   final analyticsService = AnalyticsService();
 
-  // Set up global error handling
   FlutterError.onError = (FlutterErrorDetails details) {
     analyticsService.logFlutterError(details);
   };
@@ -68,10 +63,7 @@ class _SelfSyncAppState extends State<SelfSyncApp> {
     _themeService.addListener(_onThemeChanged);
     _onboardingService.addListener(_onOnboardingChanged);
 
-    // Track app startup time
     _trackStartupTime();
-
-    // Wait for services to initialize
     _waitForInitialization();
   }
 
@@ -84,7 +76,6 @@ class _SelfSyncAppState extends State<SelfSyncApp> {
   }
 
   Future<void> _waitForInitialization() async {
-    // Give services time to load
     await Future.delayed(const Duration(milliseconds: 100));
     setState(() {
       _isInitialized = true;
@@ -99,15 +90,11 @@ class _SelfSyncAppState extends State<SelfSyncApp> {
   }
 
   void _onThemeChanged() {
-    setState(() {
-      // Rebuild app with new theme
-    });
+    setState(() {});
   }
 
   void _onOnboardingChanged() {
-    setState(() {
-      // Rebuild to show/hide onboarding or tutorial
-    });
+    setState(() {});
   }
 
   @override
@@ -115,7 +102,6 @@ class _SelfSyncAppState extends State<SelfSyncApp> {
     AppLogger.lifecycle('Building SelfSyncApp widget', tag: 'SelfSyncApp');
 
     if (!_isInitialized) {
-      // Show loading screen while initializing
       return MaterialApp(
         debugShowCheckedModeBanner: false,
         home: Scaffold(
@@ -137,20 +123,10 @@ class _SelfSyncAppState extends State<SelfSyncApp> {
       theme: _themeService.getLightTheme(),
       darkTheme: _themeService.getDarkTheme(),
       themeMode: _themeService.themeMode,
-      home: _onboardingService.hasCompletedOnboarding
-          ? MainScreen(
+      home: MainScreen(
         themeService: _themeService,
         analyticsService: widget.analyticsService,
         onboardingService: _onboardingService,
-      )
-          : OnboardingFlow(
-        onboardingService: _onboardingService,
-        analyticsService: widget.analyticsService,
-        onComplete: () {
-          setState(() {
-            // Refresh to show main screen with tutorial
-          });
-        },
       ),
     );
   }
@@ -178,11 +154,9 @@ class _MainScreenState extends State<MainScreen> {
   late final SideDrawerController _drawerController;
   DateTime? _targetDate;
 
-  // Cache screens to avoid rebuilds
   late final CalendarScreen _calendarScreen;
   late final TrendsScreen _trendsScreen;
 
-  // GlobalKeys for tutorial targets
   final GlobalKey _calendarTabKey = GlobalKey();
   final GlobalKey _diaryTabKey = GlobalKey();
   final GlobalKey _trendsTabKey = GlobalKey();
@@ -195,7 +169,6 @@ class _MainScreenState extends State<MainScreen> {
     _moodService = MoodService();
     _drawerController = SideDrawerController();
 
-    // Initialize cached screens
     _calendarScreen = CalendarScreen(
       moodService: _moodService,
       onDateSelected: (date) => _navigateToDate(1, date),
@@ -209,13 +182,17 @@ class _MainScreenState extends State<MainScreen> {
       themeService: widget.themeService,
     );
 
-    // Track initial screen view
     widget.analyticsService.trackScreenView(_getTabName(_currentIndex));
 
-    // Show tutorial after first frame if needed
+    // Show tutorial after first frame if user hasn't completed it
     if (widget.onboardingService.shouldShowTutorial) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _showTutorial();
+        // Add a small delay to ensure everything is rendered
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            _showTutorial();
+          }
+        });
       });
     }
   }
@@ -334,6 +311,7 @@ class _MainScreenState extends State<MainScreen> {
           themeService: widget.themeService,
           analyticsService: widget.analyticsService,
           drawerController: _drawerController,
+          onboardingService: widget.onboardingService,
         ),
       ),
     );
@@ -343,14 +321,12 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Track builds for performance testing
     PerformanceTestHelper.recordBuild('MainScreen');
 
-    // Build the screen list dynamically to handle _targetDate changes
     final screens = [
       _calendarScreen,
       MoodLogScreen(
-        key: ValueKey(_targetDate), // Force rebuild when date changes
+        key: ValueKey(_targetDate),
         moodService: _moodService,
         initialDate: _targetDate,
         drawerController: _drawerController,
@@ -367,9 +343,6 @@ class _MainScreenState extends State<MainScreen> {
       onTrendsTap: () => _onNavigationTap(2),
       child: Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        // ⚡ OPTIMIZATION: Use IndexedStack instead of switching widgets
-        // This keeps Calendar and Trends screens cached
-        // MoodLogScreen rebuilds when _targetDate changes
         body: IndexedStack(
           index: _currentIndex,
           children: screens,

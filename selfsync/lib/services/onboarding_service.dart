@@ -1,7 +1,6 @@
 ﻿import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Service for managing onboarding flow and privacy acceptance
 class OnboardingService extends ChangeNotifier {
   static const String _hasCompletedOnboardingKey = 'has_completed_onboarding';
   static const String _hasCompletedTutorialKey = 'has_completed_tutorial';
@@ -19,13 +18,13 @@ class OnboardingService extends ChangeNotifier {
   DateTime? get privacyAcceptedDate => _privacyAcceptedDate;
 
   /// Check if user should see tutorial
-  bool get shouldShowTutorial => _hasCompletedOnboarding && !_hasCompletedTutorial;
+  /// Show tutorial if they haven't completed it yet
+  bool get shouldShowTutorial => !_hasCompletedTutorial;
 
   OnboardingService() {
     _loadPreferences();
   }
 
-  /// Load saved onboarding state
   Future<void> _loadPreferences() async {
     final prefs = await SharedPreferences.getInstance();
 
@@ -41,7 +40,6 @@ class OnboardingService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Mark onboarding as completed
   Future<void> completeOnboarding() async {
     _hasCompletedOnboarding = true;
     final prefs = await SharedPreferences.getInstance();
@@ -49,7 +47,6 @@ class OnboardingService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Mark tutorial as completed
   Future<void> completeTutorial() async {
     _hasCompletedTutorial = true;
     final prefs = await SharedPreferences.getInstance();
@@ -57,7 +54,6 @@ class OnboardingService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Accept privacy policy
   Future<void> acceptPrivacyPolicy() async {
     _privacyAccepted = true;
     _privacyAcceptedDate = DateTime.now();
@@ -69,7 +65,6 @@ class OnboardingService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Reset onboarding (for testing or user request)
   Future<void> resetOnboarding() async {
     _hasCompletedOnboarding = false;
     _hasCompletedTutorial = false;
@@ -85,7 +80,6 @@ class OnboardingService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Reset just the tutorial (to show it again)
   Future<void> resetTutorial() async {
     _hasCompletedTutorial = false;
 

@@ -1,18 +1,21 @@
 ﻿import 'package:flutter/material.dart';
 import '../services/theme_service.dart';
 import '../services/analytics_service.dart';
+import '../services/onboarding_service.dart';
 import '../widgets/side_drawer.dart';
 
 class SettingsScreen extends StatefulWidget {
   final ThemeService themeService;
   final AnalyticsService analyticsService;
   final SideDrawerController drawerController;
+  final OnboardingService onboardingService;
 
   const SettingsScreen({
     super.key,
     required this.themeService,
     required this.analyticsService,
     required this.drawerController,
+    required this.onboardingService,
   });
 
   @override
@@ -61,6 +64,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _buildColorGradientSection(theme),
               const SizedBox(height: 16),
               _buildPrivacySection(theme),
+              const SizedBox(height: 16),
+              _buildOnboardingSection(theme),
               const SizedBox(height: 24),
               _buildAboutSection(theme),
             ],
@@ -485,6 +490,78 @@ class _SettingsScreenState extends State<SettingsScreen> {
           activeThumbColor: theme.colorScheme.onPrimary,
         ),
       ],
+    );
+  }
+
+  Widget _buildOnboardingSection(ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.school_rounded,
+                size: 24,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Help & Tutorial',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      'Take the guided tour again',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                // Reset tutorial and pop back - tutorial will show immediately
+                await widget.onboardingService.resetTutorial();
+                if (mounted) {
+                  Navigator.of(context).pop();
+                }
+              },
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Restart Tutorial'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                side: BorderSide(
+                  color: theme.colorScheme.outline.withValues(alpha: 0.3),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
