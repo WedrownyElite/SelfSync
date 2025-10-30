@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../models/mood_entry.dart';
 import '../services/mood_service.dart';
 import '../widgets/side_drawer.dart';
+import '../widgets/interactive_tutorial_overlay.dart';
 import '../utils/app_logger.dart';
 import '../services/theme_service.dart';
 import '../utils/performance_test_helper.dart';
@@ -264,15 +265,19 @@ class _MoodLogScreenState extends State<MoodLogScreen>
   void didChangeMetrics() {
     super.didChangeMetrics();
 
-    // Don't respond to metrics changes when a dialog is open
     if (_isDialogOpen) {
       return;
     }
 
     final bottomInset = WidgetsBinding.instance.platformDispatcher.views.first.viewInsets.bottom;
-
-    // Keyboard is visible if bottom inset > 0
     final isKeyboardNowVisible = bottomInset > 0;
+
+    // Detect keyboard opening for tutorial progression
+    if (!_isKeyboardVisible && isKeyboardNowVisible) {
+      // Keyboard just opened - progress tutorial
+      AppLogger.info('Keyboard opened - progressing tutorial', tag: 'Tutorial');
+      InteractiveTutorialController.completeCurrentStep();
+    }
 
     if (_isKeyboardVisible != isKeyboardNowVisible) {
       setState(() {
@@ -280,22 +285,17 @@ class _MoodLogScreenState extends State<MoodLogScreen>
       });
 
       if (_isKeyboardVisible) {
-        // ... timer code ...
         _sliderExpansionTimer = Timer(const Duration(milliseconds: 150), () {
           if (mounted &&
               _isKeyboardVisible &&
               _messageController.text.isEmpty &&
               _editingEntryId == null &&
               !_isDialogOpen) {
-            // Use setState without animation
-            if (mounted) {
-              _isInputExpanded = true;
-              setState(() {});
-            }
+            _isInputExpanded = true;
+            setState(() {});
           }
         });
       } else {
-        // Instant hide when keyboard closes
         _sliderExpansionTimer?.cancel();
         _isInputExpanded = false;
         setState(() {});
@@ -392,6 +392,10 @@ class _MoodLogScreenState extends State<MoodLogScreen>
 
     // Add mood entry using MoodService
     widget.moodService.addEntry(message, rating);
+
+    // Progress tutorial after sending message
+    AppLogger.info('Message sent - progressing tutorial', tag: 'Tutorial');
+    InteractiveTutorialController.completeCurrentStep();
 
     // Capture the ID of the newly added entry (it's the first one after adding)
     if (widget.moodService.entries.isNotEmpty) {
@@ -617,6 +621,10 @@ class _MoodLogScreenState extends State<MoodLogScreen>
                     } else {
                       _calendarExpandController.forward();
                       _isCalendarExpanded = true;
+
+                      // Progress tutorial when calendar opens
+                      AppLogger.info('Calendar expanded - progressing tutorial', tag: 'Tutorial');
+                      InteractiveTutorialController.completeCurrentStep();
                     }
                   });
                 },
