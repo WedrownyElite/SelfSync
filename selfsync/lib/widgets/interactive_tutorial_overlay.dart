@@ -2,7 +2,7 @@
 import 'package:flutter/services.dart';
 
 /// TRUE interactive tutorial - user must actually USE the app to proceed
-/// NO back/next buttons - only progresses when user completes the action
+/// Detects actual taps on target elements and positions instruction card smartly
 class InteractiveTutorialOverlay extends StatefulWidget {
   final List<InteractiveTutorialStep> steps;
   final VoidCallback onComplete;
@@ -24,6 +24,7 @@ class _InteractiveTutorialOverlayState extends State<InteractiveTutorialOverlay>
   int _currentStep = 0;
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
+  bool _waitingForAction = false;
 
   @override
   void initState() {
@@ -49,65 +50,100 @@ class _InteractiveTutorialOverlayState extends State<InteractiveTutorialOverlay>
     super.dispose();
   }
 
+  void _handleStepProgress() {
+    if (_waitingForAction) return; // Prevent double progression
+
+    setState(() {
+      _waitingForAction = true;
+    });
+
+    HapticFeedback.mediumImpact();
+
+    if (_currentStep < widget.steps.length - 1) {
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (mounted) {
+          setState(() {
+            _currentStep++;
+            _waitingForAction = false;
+          });
+        }
+      });
+    } else {
+      widget.onComplete();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final step = widget.steps[_currentStep];
     final theme = Theme.of(context);
 
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.mediumImpact();
-
-        if (_currentStep < widget.steps.length - 1) {
-          setState(() {
-            _currentStep++;
-          });
-        } else {
-          widget.onComplete();
-        }
-      },
-      child: Material(
-        color: Colors.transparent,
-        child: Stack(
-          children: [
-            // Semi-transparent overlay (NO BLUR)
-            Container(
-              color: Colors.black.withValues(alpha: 0.5),
+    return Material(
+      color: Colors.transparent,
+      child: Stack(
+        children: [
+          // Semi-transparent overlay WITH CUTOUT for target (allows interaction)
+          if (step.targetKey != null && step.requiresInteraction)
+            _buildOverlayWithCutout(step.targetKey!)
+          else
+          // Full overlay for non-interactive steps
+            GestureDetector(
+              onTap: _handleStepProgress,
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.5),
+              ),
             ),
 
-            // Pulsing spotlight on target
-            if (step.targetKey != null) _buildPulsingSpotlight(step.targetKey!, theme),
+          // Pulsing spotlight on target
+          if (step.targetKey != null)
+            _buildPulsingSpotlight(step.targetKey!, theme, step.requiresInteraction),
 
-            // Instruction card
-            _buildInstructionCard(theme, step),
+          // Instruction card (positioned smartly to avoid blocking targets)
+          _buildSmartInstructionCard(theme, step),
 
-            // Skip button (top right)
-            if (widget.onSkip != null)
-              Positioned(
-                top: MediaQuery.of(context).padding.top + 8,
-                right: 8,
-                child: TextButton(
-                  onPressed: widget.onSkip,
-                  style: TextButton.styleFrom(
-                    backgroundColor: Colors.black.withValues(alpha: 0.3),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  ),
-                  child: const Text(
-                    'Skip',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                    ),
+          // Skip button (top right)
+          if (widget.onSkip != null)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 8,
+              right: 8,
+              child: TextButton(
+                onPressed: widget.onSkip,
+                style: TextButton.styleFrom(
+                  backgroundColor: Colors.black.withValues(alpha: 0.3),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+                child: const Text(
+                  'Skip',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
 
-  Widget _buildPulsingSpotlight(GlobalKey targetKey, ThemeData theme) {
+  // Create overlay with hole cut out for target
+  Widget _buildOverlayWithCutout(GlobalKey targetKey) {
+    return CustomPaint(
+      painter: _OverlayCutoutPainter(
+        targetKey: targetKey,
+        animation: _pulseAnimation,
+      ),
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () {
+          // Tapping outside the cutout does nothing (only target tap progresses)
+        },
+        child: Container(),
+      ),
+    );
+  }
+
+  Widget _buildPulsingSpotlight(GlobalKey targetKey, ThemeData theme, bool allowInteraction) {
     final renderBox = targetKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox == null) return const SizedBox.shrink();
 
@@ -121,12 +157,26 @@ class _InteractiveTutorialOverlayState extends State<InteractiveTutorialOverlay>
 
         return Stack(
           children: [
-            // Clear area (no overlay) - allows actual interaction
+            // Invisible tap detector for interactive targets
+            if (allowInteraction)
+              Positioned(
+                left: position.dx - padding,
+                top: position.dy - padding,
+                child: GestureDetector(
+                  onTap: _handleStepProgress,
+                  child: Container(
+                    width: size.width + (padding * 2),
+                    height: size.height + (padding * 2),
+                    color: Colors.transparent,
+                  ),
+                ),
+              ),
+
+            // Green border highlight
             Positioned(
               left: position.dx - padding,
               top: position.dy - padding,
               child: IgnorePointer(
-                ignoring: false,
                 child: Container(
                   width: size.width + (padding * 2),
                   height: size.height + (padding * 2),
@@ -153,16 +203,18 @@ class _InteractiveTutorialOverlayState extends State<InteractiveTutorialOverlay>
             Positioned(
               left: position.dx + size.width / 2 - 20,
               top: position.dy - 60,
-              child: Icon(
-                Icons.arrow_downward_rounded,
-                color: Colors.greenAccent,
-                size: 40,
-                shadows: [
-                  Shadow(
-                    color: Colors.black.withValues(alpha: 0.5),
-                    blurRadius: 10,
-                  ),
-                ],
+              child: IgnorePointer(
+                child: Icon(
+                  Icons.arrow_downward_rounded,
+                  color: Colors.greenAccent,
+                  size: 40,
+                  shadows: [
+                    Shadow(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      blurRadius: 10,
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -171,89 +223,139 @@ class _InteractiveTutorialOverlayState extends State<InteractiveTutorialOverlay>
     );
   }
 
-  Widget _buildInstructionCard(ThemeData theme, InteractiveTutorialStep step) {
-    // Position at bottom of screen
+  Widget _buildSmartInstructionCard(ThemeData theme, InteractiveTutorialStep step) {
+    // Calculate smart positioning based on target location
+    final renderBox = step.targetKey?.currentContext?.findRenderObject() as RenderBox?;
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    // Determine position - use ONLY ONE anchor point
+    double? topPosition;
+    double? bottomPosition;
+
+    // If we have a target, position the card intelligently
+    if (renderBox != null) {
+      final position = renderBox.localToGlobal(Offset.zero);
+      final size = renderBox.size;
+      final targetBottom = position.dy + size.height;
+      final targetCenter = position.dy + (size.height / 2);
+
+      // If target is in bottom half, show card at top
+      if (targetCenter > screenHeight / 2) {
+        topPosition = MediaQuery.of(context).padding.top + 80; // Below skip button
+      }
+      // If target is in top half but card would overlap, show above target
+      else if (targetBottom > screenHeight - 220) {
+        bottomPosition = screenHeight - position.dy + 16;
+      }
+      // Otherwise default to bottom
+      else {
+        bottomPosition = MediaQuery.of(context).padding.bottom + 16;
+      }
+    } else {
+      // No target, default to bottom
+      bottomPosition = MediaQuery.of(context).padding.bottom + 16;
+    }
+
     return Positioned(
-      bottom: MediaQuery.of(context).padding.bottom + 16,
+      top: topPosition, // EITHER this is set
+      bottom: bottomPosition, // OR this is set (NOT BOTH!)
       left: 16,
       right: 16,
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.3),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Step indicator
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                'Step ${_currentStep + 1} of ${widget.steps.length}',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.colorScheme.onPrimaryContainer,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Title
-            Text(
-              step.title,
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: theme.colorScheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 8),
-
-            // Description
-            Text(
-              step.description,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
-                height: 1.5,
-              ),
-            ),
-
-            // Action hint
-            if (step.actionInstruction != null) ...[
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Icon(
-                    Icons.touch_app_rounded,
-                    color: Colors.greenAccent,
-                    size: 24,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      step.actionInstruction!,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: Colors.greenAccent[700],
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
+      child: GestureDetector(
+        onTap: step.requiresInteraction ? null : _handleStepProgress,
+        child: Container(
+          constraints: const BoxConstraints(
+            maxHeight: 180, // LIMIT HEIGHT
+          ),
+          padding: const EdgeInsets.all(16), // REDUCED from 20
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: BorderRadius.circular(16), // REDUCED from 20
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.3),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
               ),
             ],
-          ],
+          ),
+          child: SingleChildScrollView( // ALLOW SCROLLING if needed
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Step indicator - COMPACT
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'Step ${_currentStep + 1}/${widget.steps.length}',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onPrimaryContainer,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                // Title - COMPACT
+                Text(
+                  step.title,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.onSurface,
+                    fontSize: 16,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 6),
+
+                // Description - COMPACT
+                Text(
+                  step.description,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                    height: 1.3,
+                    fontSize: 13,
+                  ),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
+
+                // Action hint - COMPACT
+                if (step.actionInstruction != null) ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Icon(
+                        step.requiresInteraction ? Icons.touch_app_rounded : Icons.tap_and_play_rounded,
+                        color: Colors.greenAccent,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          step.actionInstruction!,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: Colors.greenAccent[700],
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -266,7 +368,7 @@ class InteractiveTutorialStep {
   final IconData? icon;
   final GlobalKey? targetKey;
   final String? actionInstruction;
-  final VoidCallback? onActionComplete; // Callback when user completes the action
+  final bool requiresInteraction; // Whether user MUST tap the target to proceed
 
   const InteractiveTutorialStep({
     required this.title,
@@ -274,7 +376,7 @@ class InteractiveTutorialStep {
     this.icon,
     this.targetKey,
     this.actionInstruction,
-    this.onActionComplete,
+    this.requiresInteraction = false, // Default to false (tap anywhere works)
   });
 }
 
@@ -316,5 +418,63 @@ class InteractiveTutorialController {
   static void completeCurrentStep() {
     // This will be called by the app when user completes an action
     // The overlay state will handle progression
+  }
+}
+
+/// Custom painter that draws overlay with a hole cut out for the target
+class _OverlayCutoutPainter extends CustomPainter {
+  final GlobalKey targetKey;
+  final Animation<double> animation;
+
+  _OverlayCutoutPainter({
+    required this.targetKey,
+    required this.animation,
+  }) : super(repaint: animation);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final renderBox = targetKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null) {
+      // No target, just draw full overlay
+      canvas.drawRect(
+        Rect.fromLTWH(0, 0, size.width, size.height),
+        Paint()..color = Colors.black.withValues(alpha: 0.5),
+      );
+      return;
+    }
+
+    final position = renderBox.localToGlobal(Offset.zero);
+    final targetSize = renderBox.size;
+    final padding = 12.0 * animation.value;
+
+    // Create path for the overlay with hole
+    final overlayPath = Path()
+      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
+
+    // Create rounded rect for the cutout (slightly larger than target for padding)
+    final cutoutRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(
+        position.dx - padding,
+        position.dy - padding,
+        targetSize.width + (padding * 2),
+        targetSize.height + (padding * 2),
+      ),
+      const Radius.circular(16),
+    );
+
+    // Subtract the cutout from overlay
+    overlayPath.addRRect(cutoutRect);
+    overlayPath.fillType = PathFillType.evenOdd;
+
+    // Draw overlay with hole
+    canvas.drawPath(
+      overlayPath,
+      Paint()..color = Colors.black.withValues(alpha: 0.5),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_OverlayCutoutPainter oldDelegate) {
+    return true; // Repaint on animation
   }
 }

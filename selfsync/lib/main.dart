@@ -162,6 +162,12 @@ class _MainScreenState extends State<MainScreen> {
   final GlobalKey _diaryTabKey = GlobalKey();
   final GlobalKey _trendsTabKey = GlobalKey();
 
+  // Tutorial keys for MoodLogScreen
+  final GlobalKey _tutorialTextFieldKey = GlobalKey();
+  final GlobalKey _tutorialSliderKey = GlobalKey();
+  final GlobalKey _tutorialSendButtonKey = GlobalKey();
+  final GlobalKey _tutorialCalendarExpandKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
@@ -239,66 +245,98 @@ class _MainScreenState extends State<MainScreen> {
       _currentIndex = 1;
     });
 
-    final tutorialSteps = [
-      InteractiveTutorialStep(
-        title: 'Welcome to Your Mood Diary! 👋',
-        description: 'This is where you\'ll track your daily moods. Let\'s learn by doing - we\'ll guide you through creating your first mood entry!',
-        actionInstruction: 'Tap anywhere to start',
-      ),
-      InteractiveTutorialStep(
-        title: 'Step 1: Tap the Input Field',
-        description: 'See the message box at the bottom? Tap it to start logging your mood.',
-        targetKey: _diaryTabKey,
-        actionInstruction: 'Tap the input field at the bottom of the screen',
-      ),
-      InteractiveTutorialStep(
-        title: 'Step 2: Choose Your Mood',
-        description: 'Great! Now use the slider to rate how you\'re feeling from 1 (struggling) to 10 (excellent). Watch the emoji change!',
-        actionInstruction: 'Move the mood slider to any rating you like',
-      ),
-      InteractiveTutorialStep(
-        title: 'Step 3: Add a Message (Optional)',
-        description: 'Type a short note about why you feel this way. It helps you remember what influenced your mood!',
-        actionInstruction: 'Type a message or skip by tapping the send button',
-      ),
-      InteractiveTutorialStep(
-        title: 'Step 4: Send Your Entry',
-        description: 'Perfect! Now tap the send button (paper plane icon) to save your mood entry.',
-        actionInstruction: 'Tap the send button to log your mood',
-      ),
-      InteractiveTutorialStep(
-        title: 'Edit & Delete Entries',
-        description: 'You can manage your entries easily: Long press any entry to edit it, or swipe right to delete it.',
-        actionInstruction: 'Try long-pressing or swiping an entry (or tap to continue)',
-      ),
-      InteractiveTutorialStep(
-        title: 'Calendar Filtering',
-        description: 'Tap the down arrow at the top to expand the calendar. You can filter entries by date or create a date range.',
-        actionInstruction: 'Tap the arrow to expand the calendar',
-      ),
-      InteractiveTutorialStep(
-        title: 'Explore the App!',
-        description: 'Great job! Check out the Calendar and Trends tabs below to see your mood patterns over time.',
-        actionInstruction: 'Tap anywhere to finish the tutorial',
-      ),
-    ];
+    // Wait for screen to build, then show tutorial
+    Future.delayed(const Duration(milliseconds: 600), () {
+      if (!mounted) return;
 
-    InteractiveTutorialController.show(
-      context,
-      steps: tutorialSteps,
-      onComplete: () async {
-        await widget.onboardingService.completeTutorial();
-        widget.analyticsService.trackEvent('tutorial_completed');
-        AppLogger.success('Tutorial completed', tag: 'MainScreen');
-      },
-      onSkip: () async {
-        await widget.onboardingService.completeTutorial();
-        widget.analyticsService.trackEvent('tutorial_skipped');
-        AppLogger.info('Tutorial skipped', tag: 'MainScreen');
-      },
-    );
+      final tutorialSteps = [
+        // Step 1: Welcome
+        InteractiveTutorialStep(
+          title: 'Welcome to Your Mood Diary! 👋',
+          description: 'This is where you\'ll track your daily moods. Let\'s learn how to log your first mood entry by actually using the app!',
+          actionInstruction: 'Tap anywhere to begin',
+          requiresInteraction: false,
+        ),
+
+        // Step 2: Tap the text field to open keyboard
+        InteractiveTutorialStep(
+          title: 'Step 1: Open the Input',
+          description: 'See the text box at the bottom that says "How are you feeling?" Tap it to start creating your mood entry.',
+          targetKey: _tutorialTextFieldKey,
+          actionInstruction: 'Tap the text field to open it',
+          requiresInteraction: true,
+        ),
+
+        // Step 3: Interact with mood slider
+        InteractiveTutorialStep(
+          title: 'Step 2: Choose Your Mood',
+          description: 'Great! Now the mood slider has appeared. Drag the slider left or right to rate how you\'re feeling from 1 (struggling) to 10 (excellent). Watch the emoji change!',
+          targetKey: _tutorialSliderKey,
+          actionInstruction: 'Slide to choose your mood rating',
+          requiresInteraction: false,
+        ),
+
+        // Step 4: Type a message (optional)
+        InteractiveTutorialStep(
+          title: 'Step 3: Add a Note (Optional)',
+          description: 'You can type a message about how you\'re feeling, or leave it blank. Notes help you remember what influenced your mood later!',
+          targetKey: _tutorialTextFieldKey,
+          actionInstruction: 'Type a message or tap to continue',
+          requiresInteraction: false,
+        ),
+
+        // Step 5: Send the entry
+        InteractiveTutorialStep(
+          title: 'Step 4: Save Your Entry',
+          description: 'Perfect! Now tap the send button (paper plane icon) on the right to save your mood entry. It will appear in your mood diary!',
+          targetKey: _tutorialSendButtonKey,
+          actionInstruction: 'Tap the send button to log your mood',
+          requiresInteraction: true,
+        ),
+
+        // Step 6: Entry management
+        InteractiveTutorialStep(
+          title: 'Managing Entries',
+          description: 'Your entry has been saved! You can long-press any entry to edit it, or swipe right on an entry to delete it. Try it if you want, or tap to continue.',
+          actionInstruction: 'Tap to continue',
+          requiresInteraction: false,
+        ),
+
+        // Step 7: Calendar filtering
+        InteractiveTutorialStep(
+          title: 'Calendar View',
+          description: 'Want to see moods from a specific date? Tap the down arrow at the top to expand the calendar. You can filter entries by date or select a date range!',
+          targetKey: _tutorialCalendarExpandKey,
+          actionInstruction: 'Tap the arrow to expand the calendar',
+          requiresInteraction: true,
+        ),
+
+        // Step 8: Complete
+        InteractiveTutorialStep(
+          title: 'You\'re All Set! 🎉',
+          description: 'Great job! You now know how to log moods, edit entries, and use the calendar. Check out the Calendar and Trends tabs to see your mood patterns visualized over time.',
+          actionInstruction: 'Tap to finish tutorial',
+          requiresInteraction: false,
+        ),
+      ];
+
+      InteractiveTutorialController.show(
+        context,
+        steps: tutorialSteps,
+        onComplete: () async {
+          await widget.onboardingService.completeTutorial();
+          widget.analyticsService.trackEvent('tutorial_completed');
+          AppLogger.success('Tutorial completed', tag: 'MainScreen');
+        },
+        onSkip: () async {
+          await widget.onboardingService.completeTutorial();
+          widget.analyticsService.trackEvent('tutorial_skipped');
+          AppLogger.info('Tutorial skipped', tag: 'MainScreen');
+        },
+      );
+    });
   }
-
+  
   @override
   void dispose() {
     AppLogger.lifecycle('MainScreen disposed', tag: 'MainScreen');
@@ -385,6 +423,11 @@ class _MainScreenState extends State<MainScreen> {
         initialDate: _targetDate,
         drawerController: _drawerController,
         themeService: widget.themeService,
+        // Pass tutorial keys
+        textFieldKey: _tutorialTextFieldKey,
+        sliderKey: _tutorialSliderKey,
+        sendButtonKey: _tutorialSendButtonKey,
+        calendarExpandKey: _tutorialCalendarExpandKey,
       ),
       _trendsScreen,
     ];

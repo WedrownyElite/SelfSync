@@ -15,13 +15,26 @@ class MoodLogScreen extends StatefulWidget {
   final SideDrawerController drawerController;
   final ThemeService themeService;
 
-  const MoodLogScreen({
+  // Tutorial keys - accessible from outside
+  final GlobalKey textFieldKey;
+  final GlobalKey sliderKey;
+  final GlobalKey sendButtonKey;
+  final GlobalKey calendarExpandKey;
+
+  MoodLogScreen({
     super.key,
     required this.moodService,
     this.initialDate,
     required this.drawerController,
     required this.themeService,
-  });
+    GlobalKey? textFieldKey,
+    GlobalKey? sliderKey,
+    GlobalKey? sendButtonKey,
+    GlobalKey? calendarExpandKey,
+  })  : textFieldKey = textFieldKey ?? GlobalKey(),
+        sliderKey = sliderKey ?? GlobalKey(),
+        sendButtonKey = sendButtonKey ?? GlobalKey(),
+        calendarExpandKey = calendarExpandKey ?? GlobalKey();
 
   @override
   State<MoodLogScreen> createState() => _MoodLogScreenState();
@@ -591,6 +604,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
             padding: const EdgeInsets.only(bottom: 8),
             child: Center(
               child: GestureDetector(
+                key: widget.calendarExpandKey,
                 onTap: () {
                   // Dismiss keyboard before toggling calendar
                   FocusScope.of(context).unfocus();
@@ -1769,6 +1783,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
               // Mood slider - animated height
               ClipRect(
                 child: AnimatedContainer(
+                  key: widget.sliderKey,
                   duration: const Duration(milliseconds: 250),
                   curve: Curves.easeInOutCubic,
                   height: _isInputExpanded ? 80 : 0,
@@ -1871,6 +1886,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
                       skipTraversal: _isDialogOpen,
                       canRequestFocus: !_isDialogOpen,
                       child: TextField(
+                        key: widget.textFieldKey,
                         controller: _messageController,
                         maxLines: 6,
                         minLines: 1,
@@ -1941,6 +1957,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
                       shape: BoxShape.circle,
                     ),
                     child: IconButton(
+                      key: widget.sendButtonKey,
                       onPressed: _editingEntryId != null ? _saveEdit : _sendMessage,
                       icon: Icon(_editingEntryId != null ? Icons.check_rounded : Icons.send_rounded),
                       color: theme.colorScheme.surface,
