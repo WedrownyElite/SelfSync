@@ -11,7 +11,8 @@ import 'services/onboarding_service.dart';
 import 'services/analytics_service.dart';
 import 'widgets/modern_nav_bar.dart';
 import 'widgets/side_drawer.dart';
-import 'widgets/tutorial_overlay.dart';
+import 'widgets/interactive_tutorial_overlay.dart';
+import 'widgets/privacy_policy_dialog.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -184,10 +185,15 @@ class _MainScreenState extends State<MainScreen> {
 
     widget.analyticsService.trackScreenView(_getTabName(_currentIndex));
 
-    // Show tutorial after first frame if user hasn't completed it
-    if (widget.onboardingService.shouldShowTutorial) {
+    // Check if privacy policy needs to be accepted first
+    if (!widget.onboardingService.privacyAccepted) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        // Add a small delay to ensure everything is rendered
+        _showPrivacyPolicy();
+      });
+    }
+    // Otherwise check if tutorial should be shown
+    else if (widget.onboardingService.shouldShowTutorial) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
         Future.delayed(const Duration(milliseconds: 500), () {
           if (mounted) {
             _showTutorial();
@@ -197,50 +203,98 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
+  void _showPrivacyPolicy() {
+    AppLogger.info('Showing privacy policy dialog', tag: 'MainScreen');
+    widget.analyticsService.trackEvent('privacy_policy_shown');
+
+    PrivacyPolicyController.show(
+      context,
+      onAccept: () async {
+        await widget.onboardingService.acceptPrivacyPolicy();
+        widget.analyticsService.trackEvent('privacy_policy_accepted');
+
+        // Show tutorial after privacy acceptance
+        if (mounted) {
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (mounted) {
+              _showTutorial();
+            }
+          });
+        }
+      },
+      onDecline: () {
+        widget.analyticsService.trackEvent('privacy_policy_declined');
+        // User declined - you could exit the app here or show a message
+        AppLogger.warning('User declined privacy policy', tag: 'MainScreen');
+      },
+    );
+  }
+
   void _showTutorial() {
+    AppLogger.info('Starting interactive tutorial', tag: 'MainScreen');
     widget.analyticsService.trackEvent('tutorial_started');
 
+    // Navigate to mood diary screen for the tutorial
+    setState(() {
+      _currentIndex = 1;
+    });
+
     final tutorialSteps = [
-      TutorialStep(
-        title: 'Welcome to Self Sync!',
-        description: 'Let\'s take a quick tour to help you get started with tracking your mood.',
-        icon: Icons.waving_hand_rounded,
+      InteractiveTutorialStep(
+        title: 'Welcome to Your Mood Diary! 👋',
+        description: 'This is where you\'ll track your daily moods. Let\'s learn by doing - we\'ll guide you through creating your first mood entry!',
+        actionInstruction: 'Tap anywhere to start',
       ),
-      TutorialStep(
-        title: 'Add Mood Entries',
-        description: 'Tap here to log how you\'re feeling. You can rate your mood from 1-10 and add notes about what affected it.',
-        icon: Icons.edit_note_rounded,
+      InteractiveTutorialStep(
+        title: 'Step 1: Tap the Input Field',
+        description: 'See the message box at the bottom? Tap it to start logging your mood.',
         targetKey: _diaryTabKey,
+        actionInstruction: 'Tap the input field at the bottom of the screen',
       ),
-      TutorialStep(
-        title: 'View Your Calendar',
-        description: 'See your mood history at a glance. Each day shows your average mood with color coding.',
-        icon: Icons.calendar_month_rounded,
-        targetKey: _calendarTabKey,
+      InteractiveTutorialStep(
+        title: 'Step 2: Choose Your Mood',
+        description: 'Great! Now use the slider to rate how you\'re feeling from 1 (struggling) to 10 (excellent). Watch the emoji change!',
+        actionInstruction: 'Move the mood slider to any rating you like',
       ),
-      TutorialStep(
-        title: 'Analyze Trends',
-        description: 'Discover patterns in your emotional well-being with charts and insights over different time periods.',
-        icon: Icons.insights_rounded,
-        targetKey: _trendsTabKey,
+      InteractiveTutorialStep(
+        title: 'Step 3: Add a Message (Optional)',
+        description: 'Type a short note about why you feel this way. It helps you remember what influenced your mood!',
+        actionInstruction: 'Type a message or skip by tapping the send button',
       ),
-      TutorialStep(
-        title: 'You\'re All Set!',
-        description: 'Start tracking your mood consistently to unlock meaningful insights about your emotional patterns. Tap the menu icon in the top-left to access settings anytime.',
-        icon: Icons.check_circle_rounded,
+      InteractiveTutorialStep(
+        title: 'Step 4: Send Your Entry',
+        description: 'Perfect! Now tap the send button (paper plane icon) to save your mood entry.',
+        actionInstruction: 'Tap the send button to log your mood',
+      ),
+      InteractiveTutorialStep(
+        title: 'Edit & Delete Entries',
+        description: 'You can manage your entries easily: Long press any entry to edit it, or swipe right to delete it.',
+        actionInstruction: 'Try long-pressing or swiping an entry (or tap to continue)',
+      ),
+      InteractiveTutorialStep(
+        title: 'Calendar Filtering',
+        description: 'Tap the down arrow at the top to expand the calendar. You can filter entries by date or create a date range.',
+        actionInstruction: 'Tap the arrow to expand the calendar',
+      ),
+      InteractiveTutorialStep(
+        title: 'Explore the App!',
+        description: 'Great job! Check out the Calendar and Trends tabs below to see your mood patterns over time.',
+        actionInstruction: 'Tap anywhere to finish the tutorial',
       ),
     ];
 
-    TutorialController.show(
+    InteractiveTutorialController.show(
       context,
       steps: tutorialSteps,
       onComplete: () async {
         await widget.onboardingService.completeTutorial();
         widget.analyticsService.trackEvent('tutorial_completed');
+        AppLogger.success('Tutorial completed', tag: 'MainScreen');
       },
       onSkip: () async {
         await widget.onboardingService.completeTutorial();
         widget.analyticsService.trackEvent('tutorial_skipped');
+        AppLogger.info('Tutorial skipped', tag: 'MainScreen');
       },
     );
   }
