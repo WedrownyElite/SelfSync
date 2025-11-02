@@ -2,96 +2,119 @@
 import 'package:flutter/services.dart';
 import '../utils/app_logger.dart';
 
-/// TRUE interactive tutorial - user must actually USE the app to proceed
-class InteractiveTutorialOverlay extends StatefulWidget {
-  final List<InteractiveTutorialStep> steps;
+/// Onboarding overlay that guides users through app features
+class OnboardingOverlay extends StatefulWidget {
+  final List<OnboardingStep> steps;
   final VoidCallback onComplete;
   final VoidCallback? onSkip;
+  final void Function(int stepIndex)? onStepChanged;
 
-  const InteractiveTutorialOverlay({
+  const OnboardingOverlay({
     super.key,
     required this.steps,
     required this.onComplete,
     this.onSkip,
+    this.onStepChanged,
   });
 
   @override
-  State<InteractiveTutorialOverlay> createState() => _InteractiveTutorialOverlayState();
+  State<OnboardingOverlay> createState() => OnboardingOverlayState();
 }
 
-class _InteractiveTutorialOverlayState extends State<InteractiveTutorialOverlay>
-    with SingleTickerProviderStateMixin {
+class OnboardingOverlayState extends State<OnboardingOverlay>
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   int _currentStep = 0;
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
-  bool _waitingForAction = false;
+  bool _isKeyboardVisible = false;
+  late AnimationController _cardAnimationController;
+  late Animation<double> _cardScaleAnimation;
+  late Animation<double> _cardFadeAnimation;
 
   @override
   void initState() {
     super.initState();
-    AppLogger.lifecycle('Tutorial overlay initialized', tag: 'Tutorial');
+    WidgetsBinding.instance.addObserver(this);
+    AppLogger.info('Onboarding started', tag: 'Onboarding');
 
     _pulseController = AnimationController(
-      duration: const Duration(milliseconds: 1000),
+      duration: const Duration(milliseconds: 1200),
       vsync: this,
     );
 
-    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.15).animate(
-      CurvedAnimation(
-        parent: _pulseController,
-        curve: Curves.easeInOut,
-      ),
+    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.2).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
     _pulseController.repeat(reverse: true);
 
-    AppLogger.info('Starting with step 0', tag: 'Tutorial');
-    _logCurrentStepInfo();
+    // Card animation controller
+    _cardAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+
+    _cardScaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _cardAnimationController,
+        curve: Curves.easeOutCubic,
+      ),
+    );
+
+    _cardFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _cardAnimationController,
+        curve: Curves.easeOut,
+      ),
+    );
+
+    _cardAnimationController.forward();
+    _logStep();
   }
 
-  void _logCurrentStepInfo() {
-    final step = widget.steps[_currentStep];
-    AppLogger.separator(label: 'TUTORIAL STEP ${_currentStep + 1}/${widget.steps.length}');
-    AppLogger.info('Title: ${step.title}', tag: 'Tutorial');
-    AppLogger.info('Requires interaction: ${step.requiresInteraction}', tag: 'Tutorial');
-    AppLogger.info('Has target: ${step.targetKey != null}', tag: 'Tutorial');
-    AppLogger.separator();
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    final bottomInset = WidgetsBinding.instance.platformDispatcher.views.first.viewInsets.bottom;
+    final keyboardVisible = bottomInset > 0;
+
+    if (keyboardVisible != _isKeyboardVisible) {
+      setState(() {
+        _isKeyboardVisible = keyboardVisible;
+      });
+      AppLogger.debug('Keyboard visibility changed: $keyboardVisible', tag: 'Onboarding');
+    }
   }
 
   @override
   void dispose() {
-    AppLogger.lifecycle('Tutorial overlay disposed', tag: 'Tutorial');
+    WidgetsBinding.instance.removeObserver(this);
     _pulseController.dispose();
+    _cardAnimationController.dispose();
     super.dispose();
   }
 
-  void _handleStepProgress() {
-    if (_waitingForAction) {
-      AppLogger.warning('Step progression blocked - already waiting', tag: 'Tutorial');
-      return;
-    }
+  void _logStep() {
+    final step = widget.steps[_currentStep];
+    AppLogger.separator(label: 'STEP ${_currentStep + 1}/${widget.steps.length}');
+    AppLogger.info('Title: ${step.title}', tag: 'Onboarding');
+    AppLogger.info('Interactive: ${step.requiresAction}', tag: 'Onboarding');
+    AppLogger.separator();
+  }
 
-    AppLogger.info('Progressing from step ${_currentStep + 1}', tag: 'Tutorial');
-
-    setState(() {
-      _waitingForAction = true;
-    });
-
-    HapticFeedback.mediumImpact();
-
+  /// Progress to next step - called externally or internally
+  void nextStep() {
     if (_currentStep < widget.steps.length - 1) {
-      Future.delayed(const Duration(milliseconds: 300), () {
-        if (mounted) {
-          setState(() {
-            _currentStep++;
-            _waitingForAction = false;
-          });
-          AppLogger.success('Advanced to step ${_currentStep + 1}', tag: 'Tutorial');
-          _logCurrentStepInfo();
-        }
-      });
+      HapticFeedback.lightImpact();
+      setState(() => _currentStep++);
+      _logStep();
+      widget.onStepChanged?.call(_currentStep);
+
+      // Restart card animation for new step
+      _cardAnimationController.reset();
+      _cardAnimationController.forward();
     } else {
-      AppLogger.success('Tutorial completed!', tag: 'Tutorial');
+      AppLogger.success('Onboarding completed', tag: 'Onboarding');
       widget.onComplete();
     }
   }
@@ -101,323 +124,271 @@ class _InteractiveTutorialOverlayState extends State<InteractiveTutorialOverlay>
     final step = widget.steps[_currentStep];
     final theme = Theme.of(context);
 
-    AppLogger.debug('Building tutorial overlay for step ${_currentStep + 1}', tag: 'Tutorial');
-    AppLogger.debug('Step requires interaction: ${step.requiresInteraction}', tag: 'Tutorial');
-
-    if (step.requiresInteraction) {
-      AppLogger.info('INTERACTIVE MODE - No touch blocking', tag: 'Tutorial');
-      return _buildInteractiveMode(context, theme, step);
-    } else {
-      AppLogger.info('NON-INTERACTIVE MODE - Dark overlay with tap to continue', tag: 'Tutorial');
-      return _buildNonInteractiveMode(context, theme, step);
-    }
-  }
-
-  // Interactive mode: Completely transparent to touches - NO blocking
-  Widget _buildInteractiveMode(BuildContext context, ThemeData theme, InteractiveTutorialStep step) {
     return Stack(
       children: [
-        // Pulsing spotlight - wrapped in IgnorePointer so it doesn't block
-        if (step.targetKey != null)
-          IgnorePointer(
-            child: _buildPulsingSpotlight(step.targetKey!, theme),
+        // Dark overlay for non-interactive steps (only if showOverlay is true)
+        if (!step.requiresAction && step.showOverlay)
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: nextStep,
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.6),
+              ),
+            ),
           ),
 
-        // Instruction card - wrapped in IgnorePointer so it doesn't block
-        _buildSmartInstructionCard(theme, step, interactive: true),
+        // Highlight spotlight
+        if (step.targetKey != null && !_isKeyboardVisible)
+          _buildSpotlight(step.targetKey!),
 
-        // Skip button (ALWAYS tappable) - NOT wrapped, Positioned is direct child
+        // Instruction card
+        _buildInstructionCard(theme, step),
+
+        // Skip button
         if (widget.onSkip != null)
           Positioned(
             top: MediaQuery.of(context).padding.top + 8,
             right: 8,
             child: TextButton(
-              onPressed: () {
-                AppLogger.info('Skip button pressed', tag: 'Tutorial');
-                widget.onSkip!();
-              },
+              onPressed: widget.onSkip,
               style: TextButton.styleFrom(
                 backgroundColor: Colors.black.withValues(alpha: 0.5),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               ),
               child: const Text(
                 'Skip',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
               ),
             ),
           ),
-
-        // Debug indicator - FIXED: Positioned is direct child, IgnorePointer wraps contents
-        Positioned(
-          top: MediaQuery.of(context).padding.top + 50,
-          left: 0,
-          right: 0,
-          child: IgnorePointer(
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.greenAccent.withValues(alpha: 0.9),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Text(
-                  '✓ INTERACTIVE - SCREEN IS TAPPABLE',
-                  style: TextStyle(
-                    color: Colors.black,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
       ],
     );
   }
 
-  // Non-interactive mode: Full dark overlay
-  Widget _buildNonInteractiveMode(BuildContext context, ThemeData theme, InteractiveTutorialStep step) {
-    return Material(
-      color: Colors.transparent,
-      child: Stack(
-        children: [
-          // Full dark overlay
-          GestureDetector(
-            onTap: () {
-              AppLogger.info('Dark overlay tapped - progressing step', tag: 'Tutorial');
-              _handleStepProgress();
-            },
-            child: Container(
-              color: Colors.black.withValues(alpha: 0.5),
-            ),
-          ),
-
-          // Instruction card
-          _buildSmartInstructionCard(theme, step, interactive: false),
-
-          // Skip button - Positioned is direct child
-          if (widget.onSkip != null)
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 8,
-              right: 8,
-              child: TextButton(
-                onPressed: () {
-                  AppLogger.info('Skip button pressed', tag: 'Tutorial');
-                  widget.onSkip!();
-                },
-                style: TextButton.styleFrom(
-                  backgroundColor: Colors.black.withValues(alpha: 0.3),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                ),
-                child: const Text(
-                  'Skip',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPulsingSpotlight(GlobalKey targetKey, ThemeData theme) {
+  Widget _buildSpotlight(GlobalKey targetKey) {
     final renderBox = targetKey.currentContext?.findRenderObject() as RenderBox?;
-    if (renderBox == null) {
-      AppLogger.warning('Target widget not found for spotlight', tag: 'Tutorial');
-      return const SizedBox.shrink();
-    }
+    if (renderBox == null) return const SizedBox.shrink();
 
     final position = renderBox.localToGlobal(Offset.zero);
     final size = renderBox.size;
 
-    AppLogger.debug('Spotlight position: $position, size: $size', tag: 'Tutorial');
+    AppLogger.debug('Spotlight position: $position, size: $size', tag: 'Onboarding');
 
     return AnimatedBuilder(
       animation: _pulseAnimation,
-      builder: (context, child) {
-        final padding = 12.0 * _pulseAnimation.value;
+      builder: (context, _) {
+        final padding = 16.0 * _pulseAnimation.value;
 
-        return Stack(
-          children: [
-            // Green border highlight
-            Positioned(
-              left: position.dx - padding,
-              top: position.dy - padding,
-              child: Container(
-                width: size.width + (padding * 2),
-                height: size.height + (padding * 2),
-                decoration: BoxDecoration(
-                  color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: Colors.greenAccent,
-                    width: 4,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.greenAccent.withValues(alpha: 0.6),
-                      blurRadius: 30 * _pulseAnimation.value,
-                      spreadRadius: 10 * _pulseAnimation.value,
-                    ),
-                  ],
+        return Positioned(
+          left: position.dx - padding,
+          top: position.dy - padding,
+          child: IgnorePointer(
+            child: Container(
+              width: size.width + (padding * 2),
+              height: size.height + (padding * 2),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: Colors.greenAccent,
+                  width: 3,
                 ),
-              ),
-            ),
-
-            // Arrow pointing to target
-            Positioned(
-              left: position.dx + size.width / 2 - 20,
-              top: position.dy - 60,
-              child: Icon(
-                Icons.arrow_downward_rounded,
-                color: Colors.greenAccent,
-                size: 40,
-                shadows: [
-                  Shadow(
-                    color: Colors.black.withValues(alpha: 0.5),
-                    blurRadius: 10,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.greenAccent.withValues(alpha: 0.5),
+                    blurRadius: 20 * _pulseAnimation.value,
+                    spreadRadius: 5 * _pulseAnimation.value,
                   ),
                 ],
               ),
             ),
-          ],
+          ),
         );
       },
     );
   }
 
-  // CRITICAL FIX: Positioned must be DIRECT child of Stack, wrap contents with IgnorePointer instead
-  Widget _buildSmartInstructionCard(ThemeData theme, InteractiveTutorialStep step, {required bool interactive}) {
-    final renderBox = step.targetKey?.currentContext?.findRenderObject() as RenderBox?;
+  Widget _buildInstructionCard(ThemeData theme, OnboardingStep step) {
     final screenHeight = MediaQuery.of(context).size.height;
+    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    final availableHeight = screenHeight - keyboardHeight;
 
     double? topPosition;
     double? bottomPosition;
 
-    if (renderBox != null) {
-      final position = renderBox.localToGlobal(Offset.zero);
-      final size = renderBox.size;
-      final targetCenter = position.dy + (size.height / 2);
+    // Center card if requested
+    if (step.centerCard) {
+      topPosition = null;
+      bottomPosition = null;
+      AppLogger.debug('Card positioned at CENTER', tag: 'Onboarding');
+    }
+    // Force top position if specified or keyboard is visible
+    else if (step.forceTopPosition || _isKeyboardVisible) {
+      topPosition = MediaQuery.of(context).padding.top + 16;
+      AppLogger.debug('Card positioned at TOP (forced or keyboard)', tag: 'Onboarding');
+    } else if (step.targetKey != null) {
+      final renderBox = step.targetKey!.currentContext?.findRenderObject() as RenderBox?;
+      if (renderBox != null) {
+        final position = renderBox.localToGlobal(Offset.zero);
+        final size = renderBox.size;
+        final targetCenter = position.dy + (size.height / 2);
 
-      if (targetCenter > screenHeight / 2) {
-        topPosition = MediaQuery.of(context).padding.top + 80;
-        AppLogger.debug('Card positioned at TOP', tag: 'Tutorial');
+        if (targetCenter > availableHeight / 2) {
+          topPosition = MediaQuery.of(context).padding.top + 80;
+          AppLogger.debug('Card positioned at TOP', tag: 'Onboarding');
+        } else {
+          bottomPosition = MediaQuery.of(context).padding.bottom + 16;
+          AppLogger.debug('Card positioned at BOTTOM', tag: 'Onboarding');
+        }
       } else {
         bottomPosition = MediaQuery.of(context).padding.bottom + 16;
-        AppLogger.debug('Card positioned at BOTTOM', tag: 'Tutorial');
+        AppLogger.debug('Card positioned at BOTTOM (no target)', tag: 'Onboarding');
       }
     } else {
       bottomPosition = MediaQuery.of(context).padding.bottom + 16;
-      AppLogger.debug('Card positioned at BOTTOM (no target)', tag: 'Tutorial');
+      AppLogger.debug('Card positioned at BOTTOM (no target)', tag: 'Onboarding');
     }
 
-    // Positioned MUST be direct child of Stack
+    // Use Center widget if centering, otherwise use Positioned
+    if (step.centerCard) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: _buildCardContent(theme, step),
+        ),
+      );
+    }
+
     return Positioned(
       top: topPosition,
       bottom: bottomPosition,
       left: 16,
       right: 16,
+      child: _buildCardContent(theme, step),
+    );
+  }
+
+  Widget _buildCardContent(ThemeData theme, OnboardingStep step) {
+    return AnimatedBuilder(
+      animation: _cardAnimationController,
+      builder: (context, child) {
+        return Transform.scale(
+          scale: _cardScaleAnimation.value,
+          child: Opacity(
+            opacity: _cardFadeAnimation.value,
+            child: child,
+          ),
+        );
+      },
       child: IgnorePointer(
-        ignoring: interactive, // Block pointer events ONLY for interactive mode
+        ignoring: step.requiresAction,
         child: GestureDetector(
-          onTap: interactive ? null : () {
-            AppLogger.info('Instruction card tapped - progressing step', tag: 'Tutorial');
-            _handleStepProgress();
-          },
-          child: Container(
-            constraints: const BoxConstraints(
-              maxHeight: 180,
-            ),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surface,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.3),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
+          onTap: (!step.requiresAction && !step.showOverlay) ? nextStep : null,
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    theme.colorScheme.primaryContainer,
+                    theme.colorScheme.secondaryContainer,
+                  ],
                 ),
-              ],
-            ),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      'Step ${_currentStep + 1}/${widget.steps.length}',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.onPrimaryContainer,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 11,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.5),
+                  width: 2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Step indicator
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        'Step ${_currentStep + 1} of ${widget.steps.length}',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.onPrimary,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 10),
+                    const SizedBox(height: 12),
 
-                  Text(
-                    step.title,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: theme.colorScheme.onSurface,
-                      fontSize: 16,
+                    // Title
+                    Text(
+                      step.title,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.onPrimaryContainer,
+                      ),
                     ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 6),
+                    const SizedBox(height: 8),
 
-                  Text(
-                    step.description,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                      height: 1.3,
-                      fontSize: 13,
+                    // Description
+                    Text(
+                      step.description,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onPrimaryContainer.withValues(alpha: 0.9),
+                        height: 1.4,
+                      ),
                     ),
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                  ),
 
-                  if (step.actionInstruction != null) ...[
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Icon(
-                          step.requiresInteraction ? Icons.touch_app_rounded : Icons.tap_and_play_rounded,
-                          color: Colors.greenAccent,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            step.actionInstruction!,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: Colors.greenAccent[700],
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
+                    // Action hint
+                    if (step.actionHint != null) ...[
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Icon(
+                            step.requiresAction ? Icons.touch_app : Icons.tap_and_play,
+                            color: theme.colorScheme.primary,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              step.actionHint!,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.primary,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ],
+
+                    // Tap to continue (non-interactive only)
+                    if (!step.requiresAction) ...[
+                      const SizedBox(height: 16),
+                      Center(
+                        child: Text(
+                          step.showOverlay ? 'Tap anywhere to continue' : 'Tap here to continue',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ),
@@ -427,94 +398,87 @@ class _InteractiveTutorialOverlayState extends State<InteractiveTutorialOverlay>
   }
 }
 
-class InteractiveTutorialStep {
+class OnboardingStep {
   final String title;
   final String description;
-  final IconData? icon;
+  final String? actionHint;
   final GlobalKey? targetKey;
-  final String? actionInstruction;
-  final bool requiresInteraction;
+  final bool requiresAction;
+  final bool forceTopPosition;
+  final bool showOverlay;
+  final bool centerCard;
 
-  const InteractiveTutorialStep({
+  const OnboardingStep({
     required this.title,
     required this.description,
-    this.icon,
+    this.actionHint,
     this.targetKey,
-    this.actionInstruction,
-    this.requiresInteraction = false,
+    this.requiresAction = false,
+    this.forceTopPosition = false,
+    this.showOverlay = true,
+    this.centerCard = false,
   });
 }
 
-class InteractiveTutorialController {
-  static OverlayEntry? _overlayEntry;
-  static _InteractiveTutorialOverlayState? _currentState;
+/// Global controller for onboarding
+class OnboardingController {
+  static OverlayEntry? _entry;
+  static final _stateKey = GlobalKey<OnboardingOverlayState>();
 
-  static void show(
+  static void start(
       BuildContext context, {
-        required List<InteractiveTutorialStep> steps,
+        required List<OnboardingStep> steps,
         required VoidCallback onComplete,
         VoidCallback? onSkip,
+        void Function(int stepIndex)? onStepChanged,
       }) {
-    AppLogger.lifecycle('Showing tutorial overlay', tag: 'Tutorial');
     hide();
 
-    _overlayEntry = OverlayEntry(
+    _entry = OverlayEntry(
       builder: (context) {
-        AppLogger.debug('Building overlay entry', tag: 'Tutorial');
-        final overlay = InteractiveTutorialOverlay(
+        return OnboardingOverlay(
+          key: _stateKey,
           steps: steps,
           onComplete: () {
-            AppLogger.success('Tutorial completed callback fired', tag: 'Tutorial');
             hide();
             onComplete();
           },
           onSkip: onSkip != null
               ? () {
-            AppLogger.info('Tutorial skipped callback fired', tag: 'Tutorial');
             hide();
             onSkip();
           }
               : null,
+          onStepChanged: onStepChanged,
         );
-
-        return overlay;
       },
     );
 
-    Overlay.of(context).insert(_overlayEntry!);
-    AppLogger.success('Tutorial overlay inserted into overlay stack', tag: 'Tutorial');
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      AppLogger.debug('Attempting to get state reference...', tag: 'Tutorial');
-      final overlayContext = _overlayEntry?.mounted == true ? Overlay.of(context).context : null;
-      if (overlayContext != null) {
-        _currentState = overlayContext.findAncestorStateOfType<_InteractiveTutorialOverlayState>();
-        if (_currentState != null) {
-          AppLogger.success('State reference obtained', tag: 'Tutorial');
-        } else {
-          AppLogger.warning('State reference is null', tag: 'Tutorial');
-        }
-      } else {
-        AppLogger.warning('Overlay context is null', tag: 'Tutorial');
-      }
-    });
+    Overlay.of(context).insert(_entry!);
+    AppLogger.success('Onboarding overlay inserted', tag: 'Onboarding');
   }
 
   static void hide() {
-    if (_overlayEntry != null) {
-      AppLogger.info('Hiding tutorial overlay', tag: 'Tutorial');
-      _overlayEntry?.remove();
-      _overlayEntry = null;
-      _currentState = null;
-    }
+    _entry?.remove();
+    _entry = null;
   }
 
-  static void completeCurrentStep() {
-    if (_currentState != null) {
-      AppLogger.info('External step completion requested', tag: 'Tutorial');
-      _currentState?._handleStepProgress();
+  static void nextStep() {
+    final state = _stateKey.currentState;
+    if (state != null && state.mounted) {
+      AppLogger.info('Progressing to next step', tag: 'Onboarding');
+      state.nextStep();
     } else {
-      AppLogger.warning('Cannot complete step - state reference is null', tag: 'Tutorial');
+      AppLogger.warning('Cannot progress - state not available yet', tag: 'Onboarding');
+      Future.delayed(const Duration(milliseconds: 50), () {
+        final retryState = _stateKey.currentState;
+        if (retryState != null && retryState.mounted) {
+          AppLogger.info('Retry successful - progressing', tag: 'Onboarding');
+          retryState.nextStep();
+        } else {
+          AppLogger.error('State still not available after retry', tag: 'Onboarding');
+        }
+      });
     }
   }
 }

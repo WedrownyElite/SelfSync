@@ -38,10 +38,10 @@ class MoodLogScreen extends StatefulWidget {
         calendarExpandKey = calendarExpandKey ?? GlobalKey();
 
   @override
-  State<MoodLogScreen> createState() => _MoodLogScreenState();
+  State<MoodLogScreen> createState() => MoodLogScreenState();
 }
 
-class _MoodLogScreenState extends State<MoodLogScreen>
+class MoodLogScreenState extends State<MoodLogScreen>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -103,6 +103,11 @@ class _MoodLogScreenState extends State<MoodLogScreen>
 
   // Track newly submitted message for animation
   String? _newlySubmittedEntryId;
+
+  // Onboarding control
+  bool _isOnboardingActive = false;
+  int _onboardingStep = 0;
+  bool _onboardingSliderExpanded = false;
 
   @override
   void initState() {
@@ -265,40 +270,31 @@ class _MoodLogScreenState extends State<MoodLogScreen>
   void didChangeMetrics() {
     super.didChangeMetrics();
 
-    if (_isDialogOpen) {
-      return;
-    }
+    if (_isDialogOpen) return;
 
     final bottomInset = WidgetsBinding.instance.platformDispatcher.views.first.viewInsets.bottom;
     final isKeyboardNowVisible = bottomInset > 0;
 
-    // Detect keyboard opening for tutorial progression
-    if (!_isKeyboardVisible && isKeyboardNowVisible) {
-      // Keyboard just opened - progress tutorial
-      AppLogger.info('Keyboard opened - progressing tutorial', tag: 'Tutorial');
-      InteractiveTutorialController.completeCurrentStep();
+    // Don't progress onboarding based on keyboard during tutorial
+    // (we'll control it manually)
+    if (!_isKeyboardVisible && isKeyboardNowVisible && !_isOnboardingActive) {
+      AppLogger.info('Keyboard opened - progressing onboarding', tag: 'MoodLog');
+      OnboardingController.nextStep();
     }
 
     if (_isKeyboardVisible != isKeyboardNowVisible) {
-      setState(() {
-        _isKeyboardVisible = isKeyboardNowVisible;
-      });
+      setState(() => _isKeyboardVisible = isKeyboardNowVisible);
 
       if (_isKeyboardVisible) {
         _sliderExpansionTimer = Timer(const Duration(milliseconds: 150), () {
-          if (mounted &&
-              _isKeyboardVisible &&
-              _messageController.text.isEmpty &&
-              _editingEntryId == null &&
-              !_isDialogOpen) {
-            _isInputExpanded = true;
-            setState(() {});
+          if (mounted && _isKeyboardVisible && _messageController.text.isEmpty &&
+              _editingEntryId == null && !_isDialogOpen && !_isOnboardingActive) {
+            setState(() => _isInputExpanded = true);
           }
         });
       } else {
         _sliderExpansionTimer?.cancel();
-        _isInputExpanded = false;
-        setState(() {});
+        setState(() => _isInputExpanded = false);
       }
     }
   }
@@ -377,25 +373,14 @@ class _MoodLogScreenState extends State<MoodLogScreen>
   }
 
   void _sendMessage() {
-    if (_messageController.text.trim().isEmpty) {
-      AppLogger.warning('Attempted to send empty message', tag: 'MoodLog');
-      return;
-    }
-
+    // Allow empty messages - just submit the mood rating
     final message = _messageController.text.trim();
     final rating = _currentMoodRating;
 
-    AppLogger.data('Adding mood entry',
-        details: 'Rating: $rating, Message length: ${message.length}',
-        tag: 'MoodLog'
-    );
-
-    // Add mood entry using MoodService
     widget.moodService.addEntry(message, rating);
 
-    // Progress tutorial after sending message
-    AppLogger.info('Message sent - progressing tutorial', tag: 'Tutorial');
-    InteractiveTutorialController.completeCurrentStep();
+    // Progress onboarding
+    OnboardingController.nextStep();
 
     // Capture the ID of the newly added entry (it's the first one after adding)
     if (widget.moodService.entries.isNotEmpty) {
@@ -432,6 +417,43 @@ class _MoodLogScreenState extends State<MoodLogScreen>
         );
       }
     });
+  }
+
+  /// Called by onboarding to start blocking interactions
+  void startOnboarding() {
+    setState(() {
+      _isOnboardingActive = true;
+      _onboardingStep = 0;
+    });
+    AppLogger.info('Onboarding started - blocking interactions', tag: 'MoodLog');
+  }
+
+  /// Called by onboarding to update current step
+  void setOnboardingStep(int step) {
+    setState(() {
+      _onboardingStep = step;
+    });
+    AppLogger.info('Onboarding step set to: $step', tag: 'MoodLog');
+  }
+
+  /// Called by onboarding to manually expand the slider
+  void expandSliderForOnboarding() {
+    setState(() {
+      _isInputExpanded = true;
+      _onboardingSliderExpanded = true;
+    });
+    AppLogger.info('Slider expanded for onboarding', tag: 'MoodLog');
+  }
+
+  /// Called by onboarding to end blocking interactions
+  void endOnboarding() {
+    setState(() {
+      _isOnboardingActive = false;
+      _onboardingStep = 0;
+      _isInputExpanded = false;
+      _onboardingSliderExpanded = false;
+    });
+    AppLogger.info('Onboarding ended - interactions restored', tag: 'MoodLog');
   }
 
   Color _getMoodColor(int rating) {
@@ -577,7 +599,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
             child: Row(
               children: [
                 GestureDetector(
-                  onTap: () {
+                  onTap: _isOnboardingActive ? null : () {
                     // Dismiss keyboard before opening drawer
                     FocusScope.of(context).unfocus();
                     setState(() {
@@ -585,7 +607,12 @@ class _MoodLogScreenState extends State<MoodLogScreen>
                     });
                     widget.drawerController.open();
                   },
-                  child: const Icon(Icons.menu_rounded),
+                  child: Icon(
+                    Icons.menu_rounded,
+                    color: _isOnboardingActive
+                        ? theme.colorScheme.onSurface.withValues(alpha: 0.3)
+                        : null,
+                  ),
                 ),
                 const SizedBox(width: 16),
                 const Text('💜', style: TextStyle(fontSize: 24)),
@@ -609,7 +636,7 @@ class _MoodLogScreenState extends State<MoodLogScreen>
             child: Center(
               child: GestureDetector(
                 key: widget.calendarExpandKey,
-                onTap: () {
+                onTap: (_isOnboardingActive && _onboardingStep != 5 && _onboardingStep != 7) ? null : () {
                   // Dismiss keyboard before toggling calendar
                   FocusScope.of(context).unfocus();
                   setState(() {
@@ -618,13 +645,21 @@ class _MoodLogScreenState extends State<MoodLogScreen>
                       _calendarExpandController.reverse();
                       _isCalendarExpanded = false;
                       _closePickers();
+
+                      // Progress onboarding when calendar closes during step 7
+                      if (_isOnboardingActive && _onboardingStep == 7) {
+                        AppLogger.info('Calendar closed during onboarding - progressing', tag: 'Onboarding');
+                        OnboardingController.nextStep();
+                      }
                     } else {
                       _calendarExpandController.forward();
                       _isCalendarExpanded = true;
 
-                      // Progress tutorial when calendar opens
-                      AppLogger.info('Calendar expanded - progressing tutorial', tag: 'Tutorial');
-                      InteractiveTutorialController.completeCurrentStep();
+                      // Progress onboarding when calendar opens during step 5
+                      if (_isOnboardingActive && _onboardingStep == 5) {
+                        AppLogger.info('Calendar expanded - progressing onboarding', tag: 'Onboarding');
+                        OnboardingController.nextStep();
+                      }
                     }
                   });
                 },
@@ -633,7 +668,9 @@ class _MoodLogScreenState extends State<MoodLogScreen>
                   duration: const Duration(milliseconds: 300),
                   child: Icon(
                     Icons.expand_more_rounded,
-                    color: theme.colorScheme.primary,
+                    color: (_isOnboardingActive && _onboardingStep != 5 && _onboardingStep != 7)
+                        ? theme.colorScheme.primary.withValues(alpha: 0.3)
+                        : theme.colorScheme.primary,
                   ),
                 ),
               ),
@@ -1325,7 +1362,6 @@ class _MoodLogScreenState extends State<MoodLogScreen>
         controller: _scrollController,
         padding: const EdgeInsets.all(16),
         itemCount: sortedDateKeys.length,
-        // Add these optimizations:
         addAutomaticKeepAlives: false,
         addRepaintBoundaries: true,
         cacheExtent: 1000, // Cache 1000px ahead
@@ -1563,159 +1599,257 @@ class _MoodLogScreenState extends State<MoodLogScreen>
   }
 
   Widget _buildMessageBubble(MoodEntry entry, ThemeData theme) {
+    final hasMoodOnly = entry.message.isEmpty;
+
     return RepaintBoundary(
-      child: Dismissible(
-        key: ValueKey(entry.id), // ValueKey is more efficient than Key
-        direction: DismissDirection.startToEnd,
-        dismissThresholds: const {
-          DismissDirection.startToEnd: 0.4, // Require 40% swipe
-        },
-        confirmDismiss: (direction) async {
-          // Unfocus immediately when swipe is detected
-          FocusScope.of(context).unfocus();
-
-          HapticFeedback.mediumImpact();
-          _deleteEntry(entry);
-          return false; // Don't actually dismiss, let the dialog handle it
-        },
-        background: Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.red,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          alignment: Alignment.centerLeft,
-          child: const Icon(
-            Icons.delete_rounded,
-            color: Colors.white,
-            size: 28,
-          ),
-        ),
-        child: GestureDetector(
-          onLongPressStart: (details) {
-            // Unfocus when long press detected
-            FocusScope.of(context).unfocus();
-
-            HapticFeedback.mediumImpact();
-            _showContextMenu(context, entry, details.globalPosition);
+      child: ClipRect(
+        child: Dismissible(
+          key: ValueKey(entry.id),
+          direction: DismissDirection.startToEnd,
+          dismissThresholds: const {
+            DismissDirection.startToEnd: 0.4,
           },
-          child: Container(
+          confirmDismiss: (direction) async {
+            FocusScope.of(context).unfocus();
+            HapticFeedback.mediumImpact();
+
+            // Progress onboarding when user swipes during step 4
+            if (_isOnboardingActive && _onboardingStep == 4) {
+              AppLogger.info('Entry swiped during onboarding - progressing', tag: 'Onboarding');
+              OnboardingController.nextStep();
+            }
+
+            _deleteEntry(entry);
+            return false;
+          },
+          background: Container(
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: theme.colorScheme.surface,
+              color: Colors.red,
               borderRadius: BorderRadius.circular(16),
-              border: _editingEntryId == entry.id
-                  ? Border.all(
-                color: theme.colorScheme.primary,
-                width: 2,
-              )
-                  : null,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 2),
-                ),
-              ],
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    // Mood emoji
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: _getMoodColor(entry.moodRating).withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        MoodEntry.getMoodEmoji(entry.moodRating),
-                        style: const TextStyle(fontSize: 24),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
+            alignment: Alignment.centerLeft,
+            child: const Icon(
+              Icons.delete_rounded,
+              color: Colors.white,
+              size: 28,
+            ),
+          ),
+          child: GestureDetector(
+            onLongPressStart: (details) {
+              FocusScope.of(context).unfocus();
+              HapticFeedback.mediumImpact();
 
-                    // Mood info
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Text(
-                                '${entry.moodRating}/10',
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: _getMoodColor(entry.moodRating),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 2,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: _getMoodColor(entry.moodRating)
-                                      .withValues(alpha: 0.2),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Text(
-                                  MoodEntry.getMoodLabel(entry.moodRating),
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: _getMoodColor(entry.moodRating),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.access_time_rounded,
-                                size: 14,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                _timeFormat.format(entry.timestamp),
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+              // Progress onboarding when user long-presses during step 4
+              if (_isOnboardingActive && _onboardingStep == 4) {
+                AppLogger.info('Entry long-pressed during onboarding - progressing', tag: 'Onboarding');
+                OnboardingController.nextStep();
+              }
 
-                if (entry.message.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.05),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      entry.message,
-                      style: theme.textTheme.bodyMedium,
-                    ),
+              _showContextMenu(context, entry, details.globalPosition);
+            },
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: hasMoodOnly ? const EdgeInsets.all(12) : const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: hasMoodOnly
+                    ? _getMoodColor(entry.moodRating).withValues(alpha: 0.15)
+                    : theme.colorScheme.surface,
+                borderRadius: BorderRadius.circular(hasMoodOnly ? 12 : 16),
+                border: _editingEntryId == entry.id
+                    ? Border.all(
+                  color: theme.colorScheme.primary,
+                  width: 2,
+                )
+                    : hasMoodOnly
+                    ? Border.all(
+                  color: _getMoodColor(entry.moodRating).withValues(alpha: 0.3),
+                  width: 1.5,
+                )
+                    : null,
+                boxShadow: hasMoodOnly
+                    ? null
+                    : [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
                   ),
                 ],
-              ],
+              ),
+              child: hasMoodOnly
+                  ? _buildMoodOnlyBubble(entry, theme)
+                  : _buildFullBubble(entry, theme),
             ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildMoodOnlyBubble(MoodEntry entry, ThemeData theme) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Mood emoji (larger for mood-only)
+        Text(
+          MoodEntry.getMoodEmoji(entry.moodRating),
+          style: const TextStyle(fontSize: 32),
+        ),
+        const SizedBox(width: 12),
+
+        // Compact mood info
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Text(
+                  '${entry.moodRating}/10',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: _getMoodColor(entry.moodRating),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _getMoodColor(entry.moodRating).withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    MoodEntry.getMoodLabel(entry.moodRating),
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: _getMoodColor(entry.moodRating),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Row(
+              children: [
+                Icon(
+                  Icons.access_time_rounded,
+                  size: 12,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  _timeFormat.format(entry.timestamp),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontSize: 11,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFullBubble(MoodEntry entry, ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            // Mood emoji
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: _getMoodColor(entry.moodRating).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                MoodEntry.getMoodEmoji(entry.moodRating),
+                style: const TextStyle(fontSize: 24),
+              ),
+            ),
+            const SizedBox(width: 12),
+
+            // Mood info
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        '${entry.moodRating}/10',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: _getMoodColor(entry.moodRating),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _getMoodColor(entry.moodRating).withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          MoodEntry.getMoodLabel(entry.moodRating),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: _getMoodColor(entry.moodRating),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.access_time_rounded,
+                        size: 14,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _timeFormat.format(entry.timestamp),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+
+        if (entry.message.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              entry.message,
+              style: theme.textTheme.bodyMedium,
+            ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -1788,17 +1922,16 @@ class _MoodLogScreenState extends State<MoodLogScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Mood slider - animated height
+// Mood slider - animated height
               ClipRect(
                 child: AnimatedContainer(
-                  key: widget.sliderKey,
                   duration: const Duration(milliseconds: 250),
                   curve: Curves.easeInOutCubic,
-                  height: _isInputExpanded ? 80 : 0,
+                  height: (_isInputExpanded || _onboardingSliderExpanded) ? 80 : 0,
                   child: AnimatedOpacity(
                     duration: const Duration(milliseconds: 150),
-                    opacity: _isInputExpanded ? 1 : 0,
-                    child: _isInputExpanded
+                    opacity: (_isInputExpanded || _onboardingSliderExpanded) ? 1 : 0,
+                    child: (_isInputExpanded || _onboardingSliderExpanded)
                         ? SingleChildScrollView(
                       physics: const NeverScrollableScrollPhysics(),
                       child: SizedBox(
@@ -1811,70 +1944,79 @@ class _MoodLogScreenState extends State<MoodLogScreen>
                             ),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Text(
-                                        'Mood: $_currentMoodRating/10',
-                                        style: theme.textTheme.bodyMedium?.copyWith(
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 2,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: _getMoodColor(_currentMoodRating)
-                                              .withValues(alpha: 0.2),
-                                          borderRadius: BorderRadius.circular(12),
-                                        ),
-                                        child: Text(
-                                          MoodEntry.getMoodLabel(_currentMoodRating),
-                                          style: TextStyle(
-                                            fontSize: 12,
+                              child: Container(
+                                key: widget.sliderKey, // MOVE KEY HERE - wraps the whole column
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Text(
+                                          'Mood: $_currentMoodRating/10',
+                                          style: theme.textTheme.bodyMedium?.copyWith(
                                             fontWeight: FontWeight.w600,
-                                            color: _getMoodColor(_currentMoodRating),
                                           ),
                                         ),
+                                        const SizedBox(width: 12),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: _getMoodColor(_currentMoodRating)
+                                                .withValues(alpha: 0.2),
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: Text(
+                                            MoodEntry.getMoodLabel(_currentMoodRating),
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                              color: _getMoodColor(_currentMoodRating),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    SliderTheme(
+                                      data: SliderTheme.of(context).copyWith(
+                                        activeTrackColor: _getMoodColor(_currentMoodRating),
+                                        inactiveTrackColor: _getMoodColor(_currentMoodRating)
+                                            .withValues(alpha: 0.2),
+                                        thumbColor: _getMoodColor(_currentMoodRating),
+                                        overlayColor: _getMoodColor(_currentMoodRating)
+                                            .withValues(alpha: 0.3),
+                                        trackHeight: 4.0,
+                                        thumbShape: const RoundSliderThumbShape(
+                                          enabledThumbRadius: 10.0,
+                                        ),
+                                        overlayShape: const RoundSliderOverlayShape(
+                                          overlayRadius: 20.0,
+                                        ),
                                       ),
-                                    ],
-                                  ),
-                                  SliderTheme(
-                                    data: SliderTheme.of(context).copyWith(
-                                      activeTrackColor: _getMoodColor(_currentMoodRating),
-                                      inactiveTrackColor: _getMoodColor(_currentMoodRating)
-                                          .withValues(alpha: 0.2),
-                                      thumbColor: _getMoodColor(_currentMoodRating),
-                                      overlayColor: _getMoodColor(_currentMoodRating)
-                                          .withValues(alpha: 0.3),
-                                      trackHeight: 4.0,
-                                      thumbShape: const RoundSliderThumbShape(
-                                        enabledThumbRadius: 10.0,
-                                      ),
-                                      overlayShape: const RoundSliderOverlayShape(
-                                        overlayRadius: 20.0,
+                                      child: Slider(
+                                        value: _currentMoodRating.toDouble(),
+                                        min: 1,
+                                        max: 10,
+                                        divisions: 9,
+                                        onChanged: (value) {
+                                          setState(() {
+                                            _currentMoodRating = value.round();
+                                          });
+                                          HapticFeedback.selectionClick();
+
+                                          // Progress onboarding when slider is moved during step 2
+                                          if (_isOnboardingActive && _onboardingStep == 2) {
+                                            AppLogger.info('Slider moved during onboarding - progressing', tag: 'Onboarding');
+                                            OnboardingController.nextStep();
+                                          }
+                                        },
                                       ),
                                     ),
-                                    child: Slider(
-                                      value: _currentMoodRating.toDouble(),
-                                      min: 1,
-                                      max: 10,
-                                      divisions: 9,
-                                      onChanged: (value) {
-                                        setState(() {
-                                          _currentMoodRating = value.round();
-                                        });
-                                        HapticFeedback.selectionClick();
-                                      },
-                                    ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
                           ],
@@ -1892,46 +2034,48 @@ class _MoodLogScreenState extends State<MoodLogScreen>
                   Expanded(
                     child: Focus(
                       skipTraversal: _isDialogOpen,
-                      canRequestFocus: !_isDialogOpen,
-                      child: TextField(
-                        key: widget.textFieldKey,
-                        controller: _messageController,
-                        maxLines: 6,
-                        minLines: 1,
-                        keyboardType: TextInputType.multiline,
-                        textInputAction: TextInputAction.newline,
-                        decoration: InputDecoration(
-                          hintText: _editingEntryId != null
-                              ? 'Edit your message...'
-                              : 'How are you feeling?',
-                          filled: true,
-                          fillColor: theme.colorScheme.onSurface.withValues(alpha: 0.05),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(24),
-                            borderSide: BorderSide.none,
+                      canRequestFocus: !_isDialogOpen && !(_isOnboardingActive && (_onboardingStep == 2 || _onboardingStep == 3)),
+                      child: IgnorePointer(
+                        ignoring: _isOnboardingActive && (_onboardingStep == 2 || _onboardingStep == 3), // Block during slider and send steps
+                        child: TextField(
+                          key: widget.textFieldKey,
+                          controller: _messageController,
+                          maxLines: 6,
+                          minLines: 1,
+                          keyboardType: TextInputType.multiline,
+                          textInputAction: TextInputAction.newline,
+                          decoration: InputDecoration(
+                            hintText: _editingEntryId != null
+                                ? 'Edit your message...'
+                                : 'How are you feeling?',
+                            filled: true,
+                            fillColor: theme.colorScheme.onSurface.withValues(alpha: 0.05),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide.none,
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 12,
+                            ),
+                            floatingLabelBehavior: FloatingLabelBehavior.never,
                           ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(24),
-                            borderSide: BorderSide.none,
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(24),
-                            borderSide: BorderSide.none,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 12,
-                          ),
-                          // Disable animations on the input decoration
-                          floatingLabelBehavior: FloatingLabelBehavior.never,
+                          onSubmitted: (_) {
+                            if (_editingEntryId != null) {
+                              _saveEdit();
+                            } else {
+                              _sendMessage();
+                            }
+                          },
                         ),
-                        onSubmitted: (_) {
-                          if (_editingEntryId != null) {
-                            _saveEdit();
-                          } else {
-                            _sendMessage();
-                          }
-                        },
                       ),
                     ),
                   ),

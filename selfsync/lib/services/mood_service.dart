@@ -188,16 +188,24 @@ class MoodService extends ChangeNotifier {
     return messageList[Random().nextInt(messageList.length)];
   }
 
-  void addEntry(String message, int moodRating) {
+  void addEntry(String message, int moodRating, {DateTime? timestamp}) {
     final entry = MoodEntry(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: (timestamp ?? DateTime.now()).millisecondsSinceEpoch.toString(),
       message: message,
       moodRating: moodRating,
-      timestamp: DateTime.now(),
+      timestamp: timestamp ?? DateTime.now(),
     );
     _entries.insert(0, entry);
     notifyListeners();
-    _saveEntries(); // Save after adding
+    _saveEntries();
+  }
+
+  /// Clear all entries (used for onboarding cleanup)
+  void clearAllEntries() {
+    _entries.clear();
+    _saveEntries();
+    notifyListeners();
+    debugPrint('All mood entries cleared');
   }
 
   void deleteEntry(String id) {

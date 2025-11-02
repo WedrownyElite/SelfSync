@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../widgets/side_drawer.dart';
 import '../services/theme_service.dart';
 import '../utils/performance_test_helper.dart';
+import '../utils/app_logger.dart';
 
 enum DisplayMode {
   normal,
@@ -23,6 +24,7 @@ class CalendarScreen extends StatefulWidget {
   final Function(DateTime)? onDateSelected;
   final SideDrawerController drawerController;
   final ThemeService themeService;
+  final GlobalKey? viewToggleKey;
 
   const CalendarScreen({
     super.key,
@@ -30,13 +32,14 @@ class CalendarScreen extends StatefulWidget {
     this.onDateSelected,
     required this.drawerController,
     required this.themeService,
+    this.viewToggleKey,
   });
 
   @override
-  State<CalendarScreen> createState() => _CalendarScreenState();
+  State<CalendarScreen> createState() => CalendarScreenState();
 }
 
-class _CalendarScreenState extends State<CalendarScreen>
+class CalendarScreenState extends State<CalendarScreen>
     with AutomaticKeepAliveClientMixin, TickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
   final int currentYear = DateTime.now().year;
@@ -62,6 +65,9 @@ class _CalendarScreenState extends State<CalendarScreen>
   static double? _savedScrollPosition;
   static bool _hasVisitedBefore = false;
   bool _hasScrolledToCurrentMonth = false;
+
+  // ignore: unused_field
+  bool _isOnboardingActive = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -109,6 +115,20 @@ class _CalendarScreenState extends State<CalendarScreen>
     widget.moodService.removeListener(_onMoodServiceUpdate);
     widget.themeService.removeListener(_onThemeChanged);
     super.dispose();
+  }
+
+  void startOnboarding() {
+    setState(() {
+      _isOnboardingActive = true;
+    });
+    AppLogger.info('Calendar onboarding started', tag: 'CalendarScreen');
+  }
+
+  void endOnboarding() {
+    setState(() {
+      _isOnboardingActive = false;
+    });
+    AppLogger.info('Calendar onboarding ended', tag: 'CalendarScreen');
   }
 
   void _saveScrollPosition() {

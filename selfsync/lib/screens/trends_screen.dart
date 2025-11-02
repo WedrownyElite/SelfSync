@@ -15,6 +15,7 @@ class TrendsScreen extends StatefulWidget {
   final Function(int tabIndex, DateTime? date)? onNavigateToTab;
   final SideDrawerController drawerController;
   final ThemeService themeService;
+  final GlobalKey? datePresetsKey;
 
   const TrendsScreen({
     super.key,
@@ -22,23 +23,17 @@ class TrendsScreen extends StatefulWidget {
     this.onNavigateToTab,
     required this.drawerController,
     required this.themeService,
+    this.datePresetsKey,
   });
 
   @override
-  State<TrendsScreen> createState() => _TrendsScreenState();
+  State<TrendsScreen> createState() => TrendsScreenState();
 }
 
-class _TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixin {
+class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixin {
   String _selectedRange = '7D';
   final PageController _distributionPageController = PageController();
   int _currentDistributionPage = 0;
-
-  // Custom date range state
-  bool _isCalendarExpanded = false;
-  DateTime _selectedCalendarMonth = DateTime.now();
-  DateTime? _customStartDate;
-  DateTime? _customEndDate;
-  late AnimationController _calendarExpandController;
 
   // Month/Year picker state
   bool _isMonthPickerVisible = false;
@@ -49,6 +44,19 @@ class _TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMix
   // Date formatters
   static final _monthFormat = DateFormat('MMMM');
   static final _dateFormat = DateFormat('MMM d, yyyy');
+
+  // Onboarding control
+  // ignore: unused_field
+  bool _isOnboardingActive = false;
+  // ignore: unused_field
+  int _onboardingStep = 0;  
+
+  // Custom date range state
+  bool _isCalendarExpanded = false;
+  DateTime _selectedCalendarMonth = DateTime.now();
+  DateTime? _customStartDate;
+  DateTime? _customEndDate;
+  late AnimationController _calendarExpandController;
 
   @override
   void initState() {
@@ -84,6 +92,30 @@ class _TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMix
     _distributionPageController.dispose();
     AppLogger.lifecycle('Stopped listening to MoodService updates', tag: 'TrendsScreen');
     super.dispose();
+  }
+
+// ADD THESE THREE METHODS:
+  void startOnboarding() {
+    setState(() {
+      _isOnboardingActive = true;
+      _onboardingStep = 0;
+    });
+    AppLogger.info('Trends onboarding started', tag: 'TrendsScreen');
+  }
+
+  void setOnboardingStep(int step) {
+    setState(() {
+      _onboardingStep = step;
+    });
+    AppLogger.info('Trends onboarding step set to: $step', tag: 'TrendsScreen');
+  }
+
+  void endOnboarding() {
+    setState(() {
+      _isOnboardingActive = false;
+      _onboardingStep = 0;
+    });
+    AppLogger.info('Trends onboarding ended', tag: 'TrendsScreen');
   }
 
   void _onMoodServiceUpdate() {
@@ -328,6 +360,7 @@ class _TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMix
             borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
+            key: widget.datePresetsKey,
             children: ranges.map((range) {
               final isSelected = _selectedRange == range;
               return Expanded(

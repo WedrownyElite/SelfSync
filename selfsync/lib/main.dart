@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'utils/app_logger.dart';
 import 'utils/performance_test_helper.dart';
@@ -168,6 +169,22 @@ class _MainScreenState extends State<MainScreen> {
   final GlobalKey _tutorialSendButtonKey = GlobalKey();
   final GlobalKey _tutorialCalendarExpandKey = GlobalKey();
 
+  final GlobalKey<MoodLogScreenState> _moodLogKey = GlobalKey<MoodLogScreenState>();
+
+  // Track if onboarding is active to block navigation
+  bool _isOnboardingActive = false;
+
+  // Tutorial keys for CalendarScreen
+  final GlobalKey _tutorialCalendarViewToggleKey = GlobalKey();
+
+  // Tutorial keys for TrendsScreen  
+  final GlobalKey _tutorialTrendsDatePresetsKey = GlobalKey();
+
+  final GlobalKey<CalendarScreenState> _calendarKey = GlobalKey<CalendarScreenState>();
+  final GlobalKey<TrendsScreenState> _trendsKey = GlobalKey<TrendsScreenState>();
+
+  bool _hasGeneratedFakeData = false;
+
   @override
   void initState() {
     super.initState();
@@ -177,28 +194,29 @@ class _MainScreenState extends State<MainScreen> {
     _drawerController = SideDrawerController();
 
     _calendarScreen = CalendarScreen(
+      key: _calendarKey,
       moodService: _moodService,
       onDateSelected: (date) => _navigateToDate(1, date),
       drawerController: _drawerController,
       themeService: widget.themeService,
+      viewToggleKey: _tutorialCalendarViewToggleKey,
     );
 
     _trendsScreen = TrendsScreen(
+      key: _trendsKey,
       moodService: _moodService,
       drawerController: _drawerController,
       themeService: widget.themeService,
+      datePresetsKey: _tutorialTrendsDatePresetsKey,
     );
 
     widget.analyticsService.trackScreenView(_getTabName(_currentIndex));
 
-    // Check if privacy policy needs to be accepted first
     if (!widget.onboardingService.privacyAccepted) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _showPrivacyPolicy();
       });
-    }
-    // Otherwise check if tutorial should be shown
-    else if (widget.onboardingService.shouldShowTutorial) {
+    } else if (widget.onboardingService.shouldShowTutorial) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         Future.delayed(const Duration(milliseconds: 500), () {
           if (mounted) {
@@ -219,7 +237,6 @@ class _MainScreenState extends State<MainScreen> {
         await widget.onboardingService.acceptPrivacyPolicy();
         widget.analyticsService.trackEvent('privacy_policy_accepted');
 
-        // Show tutorial after privacy acceptance
         if (mounted) {
           Future.delayed(const Duration(milliseconds: 500), () {
             if (mounted) {
@@ -230,113 +247,208 @@ class _MainScreenState extends State<MainScreen> {
       },
       onDecline: () {
         widget.analyticsService.trackEvent('privacy_policy_declined');
-        // User declined - you could exit the app here or show a message
         AppLogger.warning('User declined privacy policy', tag: 'MainScreen');
       },
     );
   }
 
   void _showTutorial() {
-    AppLogger.info('Starting interactive tutorial', tag: 'MainScreen');
+    AppLogger.info('Starting onboarding', tag: 'MainScreen');
     widget.analyticsService.trackEvent('tutorial_started');
 
-    // Navigate to mood diary screen for the tutorial
     setState(() {
       _currentIndex = 1;
+      _isOnboardingActive = true;
     });
 
-    // Wait for screen to build, then show tutorial
+    // Start onboarding mode in MoodLogScreen
+    Future.delayed(const Duration(milliseconds: 100), () {
+      _moodLogKey.currentState?.startOnboarding();
+    });
+
     Future.delayed(const Duration(milliseconds: 600), () {
       if (!mounted) return;
 
-      final tutorialSteps = [
-        // Step 1: Welcome
-        InteractiveTutorialStep(
-          title: 'Welcome to Your Mood Diary! 👋',
-          description: 'This is where you\'ll track your daily moods. Let\'s learn how to log your first mood entry by actually using the app!',
-          actionInstruction: 'Tap anywhere to begin',
-          requiresInteraction: false,
+      final steps = [
+        OnboardingStep(
+          title: 'Welcome to Self Sync! 👋',
+          description: 'Track your daily moods and discover patterns in your emotional well-being. Let\'s learn how to log your first mood entry!',
+          actionHint: 'Tap to begin',
+          requiresAction: false,
+          centerCard: true, // Show in center of screen
         ),
-
-        // Step 2: Tap the text field to open keyboard
-        InteractiveTutorialStep(
-          title: 'Step 1: Open the Input',
-          description: 'See the text box at the bottom that says "How are you feeling?" Tap it to start creating your mood entry.',
+        OnboardingStep(
+          title: 'Add a Mood Entry',
+          description: 'This text box is where you can type notes about how you\'re feeling. Tap anywhere to continue!',
           targetKey: _tutorialTextFieldKey,
-          actionInstruction: 'Tap the text field to open it',
-          requiresInteraction: true,
+          actionHint: 'Tap to continue',
+          requiresAction: false,
         ),
-
-        // Step 3: Interact with mood slider
-        InteractiveTutorialStep(
-          title: 'Step 2: Choose Your Mood',
-          description: 'Great! Now the mood slider has appeared. Drag the slider left or right to rate how you\'re feeling from 1 (struggling) to 10 (excellent). Watch the emoji change!',
+        OnboardingStep(
+          title: 'Rate Your Mood',
+          description: 'Drag the slider to rate how you\'re feeling from 1 (struggling) to 10 (excellent). Watch the emoji change as you move it!',
           targetKey: _tutorialSliderKey,
-          actionInstruction: 'Slide to choose your mood rating',
-          requiresInteraction: false,
+          actionHint: 'Move the slider',
+          requiresAction: true,
+          forceTopPosition: true,
         ),
-
-        // Step 4: Type a message (optional)
-        InteractiveTutorialStep(
-          title: 'Step 3: Add a Note (Optional)',
-          description: 'You can type a message about how you\'re feeling, or leave it blank. Notes help you remember what influenced your mood later!',
-          targetKey: _tutorialTextFieldKey,
-          actionInstruction: 'Type a message or tap to continue',
-          requiresInteraction: false,
-        ),
-
-        // Step 5: Send the entry
-        InteractiveTutorialStep(
-          title: 'Step 4: Save Your Entry',
-          description: 'Perfect! Now tap the send button (paper plane icon) on the right to save your mood entry. It will appear in your mood diary!',
+        OnboardingStep(
+          title: 'Save Your Entry',
+          description: 'Perfect! Now tap the send button to save your first mood entry.',
           targetKey: _tutorialSendButtonKey,
-          actionInstruction: 'Tap the send button to log your mood',
-          requiresInteraction: true,
+          actionHint: 'Tap the send button',
+          requiresAction: true,
         ),
-
-        // Step 6: Entry management
-        InteractiveTutorialStep(
-          title: 'Managing Entries',
-          description: 'Your entry has been saved! You can long-press any entry to edit it, or swipe right on an entry to delete it. Try it if you want, or tap to continue.',
-          actionInstruction: 'Tap to continue',
-          requiresInteraction: false,
+        OnboardingStep(
+          title: 'Edit & Delete Entries',
+          description: 'You can edit or delete any entry. Try it now: swipe right on the entry you just created, or long-press it to see options.',
+          actionHint: 'Swipe or hold an entry',
+          requiresAction: true, // User must interact to continue
         ),
-
-        // Step 7: Calendar filtering
-        InteractiveTutorialStep(
-          title: 'Calendar View',
-          description: 'Want to see moods from a specific date? Tap the down arrow at the top to expand the calendar. You can filter entries by date or select a date range!',
+        OnboardingStep(
+          title: 'Calendar Filter 📅',
+          description: 'Tap the down arrow at the top to expand the calendar and filter your entries by date.',
           targetKey: _tutorialCalendarExpandKey,
-          actionInstruction: 'Tap the arrow to expand the calendar',
-          requiresInteraction: true,
+          actionHint: 'Tap the arrow',
+          requiresAction: true,
         ),
-
-        // Step 8: Complete
-        InteractiveTutorialStep(
-          title: 'You\'re All Set! 🎉',
-          description: 'Great job! You now know how to log moods, edit entries, and use the calendar. Check out the Calendar and Trends tabs to see your mood patterns visualized over time.',
-          actionInstruction: 'Tap to finish tutorial',
-          requiresInteraction: false,
+        OnboardingStep(
+          title: 'Using the Calendar',
+          description: 'Select a single date to view entries from that day, or tap two dates to view everything in between! Try it out.',
+          actionHint: 'Tap to continue',
+          requiresAction: false,
+          showOverlay: false,
+        ),
+        OnboardingStep(
+          title: 'Close the Calendar',
+          description: 'When you\'re done, tap the up arrow to close the calendar and return to your diary.',
+          targetKey: _tutorialCalendarExpandKey,
+          actionHint: 'Tap the arrow to close',
+          requiresAction: true,
+          showOverlay: false,
+        ),
+        OnboardingStep(
+          title: 'All Set! 🎉',
+          description: 'You\'re ready to track your moods! Check out Calendar and Trends tabs to visualize your emotional patterns over time.',
+          actionHint: 'Tap to finish',
+          requiresAction: false,
         ),
       ];
 
-      InteractiveTutorialController.show(
+      OnboardingController.start(
         context,
-        steps: tutorialSteps,
+        steps: steps,
+        onStepChanged: (stepIndex) {
+          AppLogger.info('Onboarding step changed to: $stepIndex', tag: 'MainScreen');
+
+          _moodLogKey.currentState?.setOnboardingStep(stepIndex);
+
+          if (stepIndex == 2) {
+            _expandMoodSlider();
+          }
+
+          // Generate fake data before showing Trends
+          if (stepIndex == 11) {
+            _generateFakeDataForOnboarding();
+          }
+
+          // Navigate to Calendar screen
+          if (stepIndex == 9) {
+            setState(() => _currentIndex = 0);
+            _calendarKey.currentState?.startOnboarding();
+          }
+
+          // Navigate to Trends screen
+          if (stepIndex == 12) {
+            setState(() => _currentIndex = 2);
+            _trendsKey.currentState?.startOnboarding();
+          }
+        },
         onComplete: () async {
+          setState(() => _isOnboardingActive = false);
+          _moodLogKey.currentState?.endOnboarding();
+          _calendarKey.currentState?.endOnboarding();
+          _trendsKey.currentState?.endOnboarding();
+          _clearFakeDataAfterOnboarding();
           await widget.onboardingService.completeTutorial();
           widget.analyticsService.trackEvent('tutorial_completed');
-          AppLogger.success('Tutorial completed', tag: 'MainScreen');
         },
         onSkip: () async {
+          setState(() => _isOnboardingActive = false);
+          _moodLogKey.currentState?.endOnboarding();
+          _calendarKey.currentState?.endOnboarding();
+          _trendsKey.currentState?.endOnboarding();
+          _clearFakeDataAfterOnboarding();
           await widget.onboardingService.completeTutorial();
           widget.analyticsService.trackEvent('tutorial_skipped');
-          AppLogger.info('Tutorial skipped', tag: 'MainScreen');
         },
       );
     });
   }
-  
+
+  void _expandMoodSlider() {
+    AppLogger.info('Expanding mood slider for onboarding', tag: 'MainScreen');
+
+    // Access the MoodLogScreen state and expand the slider
+    final state = _moodLogKey.currentState;
+    if (state != null) {
+      state.expandSliderForOnboarding();
+      AppLogger.success('Mood slider expanded', tag: 'MainScreen');
+    } else {
+      AppLogger.error('Could not access MoodLogScreen state', tag: 'MainScreen');
+    }
+  }
+
+  void _generateFakeDataForOnboarding() {
+    if (_hasGeneratedFakeData) return;
+
+    AppLogger.info('Generating fake mood data for onboarding', tag: 'Onboarding');
+
+    final now = DateTime.now();
+    final random = Random();
+
+    for (int i = 0; i < 30; i++) {
+      final date = now.subtract(Duration(days: i));
+      final entriesCount = random.nextInt(3) + 1;
+
+      for (int j = 0; j < entriesCount; j++) {
+        final rating = random.nextInt(10) + 1;
+        final messages = [
+          'Feeling great today!',
+          'Had a productive morning',
+          'Relaxing evening',
+          'Good workout session',
+          'Quality time with family',
+          'Accomplished my goals',
+          'Feeling a bit tired',
+          'Need more rest',
+          'Stressed about work',
+          'Excited for tomorrow',
+        ];
+
+        final message = random.nextBool() ? messages[random.nextInt(messages.length)] : '';
+
+        _moodService.addEntry(
+          message,
+          rating,
+          timestamp: date.subtract(Duration(hours: random.nextInt(12), minutes: random.nextInt(60))),
+        );
+      }
+    }
+
+    _hasGeneratedFakeData = true;
+    AppLogger.success('Fake data generated: ${_moodService.entries.length} entries', tag: 'Onboarding');
+  }
+
+  void _clearFakeDataAfterOnboarding() {
+    if (!_hasGeneratedFakeData) return;
+
+    AppLogger.info('Clearing fake onboarding data', tag: 'Onboarding');
+    _moodService.clearAllEntries();
+    _hasGeneratedFakeData = false;
+    AppLogger.success('Fake data cleared', tag: 'Onboarding');
+  }
+
   @override
   void dispose() {
     AppLogger.lifecycle('MainScreen disposed', tag: 'MainScreen');
@@ -357,10 +469,12 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   void _onNavigationTap(int index) {
-    AppLogger.info(
-      'Navigation tab tapped: ${_getTabName(index)}',
-      tag: 'MainScreen',
-    );
+    if (_isOnboardingActive) {
+      AppLogger.warning('Navigation blocked during onboarding', tag: 'MainScreen');
+      return;
+    }
+
+    AppLogger.info('Navigation tab tapped: ${_getTabName(index)}', tag: 'MainScreen');
 
     setState(() {
       _targetDate = null;
@@ -368,18 +482,11 @@ class _MainScreenState extends State<MainScreen> {
     });
 
     widget.analyticsService.trackScreenView(_getTabName(index));
-
-    AppLogger.success(
-      'Navigated to ${_getTabName(index)}',
-      tag: 'MainScreen',
-    );
+    AppLogger.success('Navigated to ${_getTabName(index)}', tag: 'MainScreen');
   }
 
   void _navigateToDate(int tabIndex, DateTime? date) {
-    AppLogger.info(
-      'Navigation requested to tab $tabIndex with date: ${date?.toString() ?? "none"}',
-      tag: 'MainScreen',
-    );
+    AppLogger.info('Navigation requested to tab $tabIndex with date: ${date?.toString() ?? "none"}', tag: 'MainScreen');
 
     setState(() {
       _targetDate = date;
@@ -387,11 +494,7 @@ class _MainScreenState extends State<MainScreen> {
     });
 
     widget.analyticsService.trackScreenView(_getTabName(tabIndex));
-
-    AppLogger.success(
-      'Navigated to ${_getTabName(tabIndex)} with date: ${date?.toString() ?? "none"}',
-      tag: 'MainScreen',
-    );
+    AppLogger.success('Navigated to ${_getTabName(tabIndex)} with date: ${date?.toString() ?? "none"}', tag: 'MainScreen');
   }
 
   void _navigateToSettings() {
@@ -418,12 +521,11 @@ class _MainScreenState extends State<MainScreen> {
     final screens = [
       _calendarScreen,
       MoodLogScreen(
-        key: ValueKey(_targetDate),
+        key: _moodLogKey, // Use the state key here
         moodService: _moodService,
         initialDate: _targetDate,
         drawerController: _drawerController,
         themeService: widget.themeService,
-        // Pass tutorial keys
         textFieldKey: _tutorialTextFieldKey,
         sliderKey: _tutorialSliderKey,
         sendButtonKey: _tutorialSendButtonKey,
