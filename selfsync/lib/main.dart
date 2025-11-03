@@ -1,4 +1,3 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'utils/app_logger.dart';
 import 'utils/performance_test_helper.dart';
@@ -173,6 +172,7 @@ class _MainScreenState extends State<MainScreen> {
 
   // Track if onboarding is active to block navigation
   bool _isOnboardingActive = false;
+  int _onboardingStep = 0;
 
   // Tutorial keys for CalendarScreen
   final GlobalKey _tutorialCalendarViewToggleKey = GlobalKey();
@@ -328,8 +328,23 @@ class _MainScreenState extends State<MainScreen> {
           showOverlay: false,
         ),
         OnboardingStep(
+          title: 'Explore the Calendar 📅',
+          description: 'Let\'s check out the Calendar view to see your moods at a glance. Tap the Calendar tab at the bottom of the screen.',
+          targetKey: _calendarTabKey,
+          actionHint: 'Tap the Calendar tab',
+          requiresAction: true,
+        ),
+        OnboardingStep(
+          title: 'Calendar View Options',
+          description: 'Here you can see all your mood entries displayed on a calendar. Try tapping the view options button to switch between Grid, Circle, and Condensed layouts!',
+          targetKey: _tutorialCalendarViewToggleKey,
+          actionHint: 'Tap to continue',
+          requiresAction: false,
+          showOverlay: false,
+        ),
+        OnboardingStep(
           title: 'All Set! 🎉',
-          description: 'You\'re ready to track your moods! Check out Calendar and Trends tabs to visualize your emotional patterns over time.',
+          description: 'You\'re ready to track your moods! Feel free to explore the Trends tab to see deeper insights into your emotional patterns.',
           actionHint: 'Tap to finish',
           requiresAction: false,
         ),
@@ -347,21 +362,9 @@ class _MainScreenState extends State<MainScreen> {
             _expandMoodSlider();
           }
 
-          // Generate fake data before showing Trends
+          // End calendar onboarding when moving past calendar steps
           if (stepIndex == 11) {
-            _generateFakeDataForOnboarding();
-          }
-
-          // Navigate to Calendar screen
-          if (stepIndex == 9) {
-            setState(() => _currentIndex = 0);
-            _calendarKey.currentState?.startOnboarding();
-          }
-
-          // Navigate to Trends screen
-          if (stepIndex == 12) {
-            setState(() => _currentIndex = 2);
-            _trendsKey.currentState?.startOnboarding();
+            _calendarKey.currentState?.endOnboarding();
           }
         },
         onComplete: () async {
@@ -399,47 +402,6 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
-  void _generateFakeDataForOnboarding() {
-    if (_hasGeneratedFakeData) return;
-
-    AppLogger.info('Generating fake mood data for onboarding', tag: 'Onboarding');
-
-    final now = DateTime.now();
-    final random = Random();
-
-    for (int i = 0; i < 30; i++) {
-      final date = now.subtract(Duration(days: i));
-      final entriesCount = random.nextInt(3) + 1;
-
-      for (int j = 0; j < entriesCount; j++) {
-        final rating = random.nextInt(10) + 1;
-        final messages = [
-          'Feeling great today!',
-          'Had a productive morning',
-          'Relaxing evening',
-          'Good workout session',
-          'Quality time with family',
-          'Accomplished my goals',
-          'Feeling a bit tired',
-          'Need more rest',
-          'Stressed about work',
-          'Excited for tomorrow',
-        ];
-
-        final message = random.nextBool() ? messages[random.nextInt(messages.length)] : '';
-
-        _moodService.addEntry(
-          message,
-          rating,
-          timestamp: date.subtract(Duration(hours: random.nextInt(12), minutes: random.nextInt(60))),
-        );
-      }
-    }
-
-    _hasGeneratedFakeData = true;
-    AppLogger.success('Fake data generated: ${_moodService.entries.length} entries', tag: 'Onboarding');
-  }
-
   void _clearFakeDataAfterOnboarding() {
     if (!_hasGeneratedFakeData) return;
 
@@ -469,9 +431,21 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   void _onNavigationTap(int index) {
+    // During onboarding, only allow Calendar tab (index 0) during step 9
     if (_isOnboardingActive) {
-      AppLogger.warning('Navigation blocked during onboarding', tag: 'MainScreen');
-      return;
+      // Check if we're on step 9 and user is tapping Calendar tab
+      if (_onboardingStep == 9 && index == 0) {
+        AppLogger.info('Calendar navigation allowed during onboarding step 9', tag: 'MainScreen');
+
+        // Start calendar onboarding and progress to next step
+        _calendarKey.currentState?.startOnboarding();
+        OnboardingController.nextStep(); // Progress to step 10
+
+        // Allow this navigation - continue to the code below
+      } else {
+        AppLogger.warning('Navigation blocked during onboarding', tag: 'MainScreen');
+        return;
+      }
     }
 
     AppLogger.info('Navigation tab tapped: ${_getTabName(index)}', tag: 'MainScreen');
