@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/material.dart';
+import '../utils/app_logger.dart';
 
 class ModernNavBar extends StatelessWidget {
   final int currentIndex;
@@ -6,6 +7,8 @@ class ModernNavBar extends StatelessWidget {
   final GlobalKey? calendarKey;
   final GlobalKey? diaryKey;
   final GlobalKey? trendsKey;
+  final bool isOnboardingActive;
+  final int onboardingStep;
 
   const ModernNavBar({
     super.key,
@@ -14,11 +17,18 @@ class ModernNavBar extends StatelessWidget {
     this.calendarKey,
     this.diaryKey,
     this.trendsKey,
+    this.isOnboardingActive = false,
+    this.onboardingStep = 0,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
+    // Log nav bar state during onboarding
+    if (isOnboardingActive) {
+      AppLogger.debug('NavBar state: step=$onboardingStep, currentIndex=$currentIndex', tag: 'NavBar');
+    }
 
     return Container(
       decoration: BoxDecoration(
@@ -81,40 +91,59 @@ class ModernNavBar extends StatelessWidget {
     required Color color,
     GlobalKey? itemKey,
   }) {
+    // During onboarding, only allow Calendar tab (index 0) on step 9
+    final shouldBlock = isOnboardingActive && !(onboardingStep == 9 && index == 0);
+
+    // Debug logging for each nav item during onboarding
+    if (isOnboardingActive) {
+      AppLogger.debug('Tab $index ($label): shouldBlock=$shouldBlock', tag: 'NavBar');
+    }
+
     return Expanded(
-      child: InkWell(
-        key: itemKey,
-        onTap: () => onTap(index),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOutCubic,
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: isSelected ? color.withValues(alpha: 0.15) : Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  icon,
-                  size: 24,
-                  color: isSelected ? color : Colors.grey[400],
-                ),
+      child: IgnorePointer(
+        ignoring: shouldBlock,
+        child: Opacity(
+          opacity: shouldBlock ? 0.3 : 1.0, // Dim blocked items
+          child: InkWell(
+            key: itemKey,
+            onTap: () {
+              if (isOnboardingActive) {
+                AppLogger.info('Tab $index ($label) tapped - step=$onboardingStep', tag: 'NavBar');
+              }
+              onTap(index);
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOutCubic,
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: isSelected ? color.withValues(alpha: 0.15) : Colors.transparent,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      icon,
+                      size: 24,
+                      color: isSelected ? color : Colors.grey[400],
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 300),
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                      color: isSelected ? color : Colors.grey[400],
+                    ),
+                    child: Text(label),
+                  ),
+                ],
               ),
-              const SizedBox(height: 2),
-              AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 300),
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                  color: isSelected ? color : Colors.grey[400],
-                ),
-                child: Text(label),
-              ),
-            ],
+            ),
           ),
         ),
       ),

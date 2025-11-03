@@ -259,6 +259,7 @@ class _MainScreenState extends State<MainScreen> {
     setState(() {
       _currentIndex = 1;
       _isOnboardingActive = true;
+      _onboardingStep = 0; // Initialize to 0
     });
 
     // Start onboarding mode in MoodLogScreen
@@ -354,7 +355,17 @@ class _MainScreenState extends State<MainScreen> {
         context,
         steps: steps,
         onStepChanged: (stepIndex) {
+          AppLogger.separator(label: 'STEP CHANGE');
           AppLogger.info('Onboarding step changed to: $stepIndex', tag: 'MainScreen');
+
+          // Track current step - CRITICAL!
+          setState(() {
+            _onboardingStep = stepIndex;
+          });
+
+          AppLogger.debug('_onboardingStep updated to: $_onboardingStep', tag: 'MainScreen');
+          AppLogger.debug('_isOnboardingActive: $_isOnboardingActive', tag: 'MainScreen');
+          AppLogger.separator();
 
           _moodLogKey.currentState?.setOnboardingStep(stepIndex);
 
@@ -432,20 +443,27 @@ class _MainScreenState extends State<MainScreen> {
 
   void _onNavigationTap(int index) {
     // During onboarding, only allow Calendar tab (index 0) during step 9
+    if (_isOnboardingActive && _onboardingStep == 9 && index == 0) {
+      // Allow calendar navigation during step 9
+      AppLogger.info('Calendar navigation allowed during onboarding step 9', tag: 'MainScreen');
+
+      setState(() {
+        _targetDate = null;
+        _currentIndex = index;
+      });
+
+      widget.analyticsService.trackScreenView(_getTabName(index));
+
+      // Start calendar onboarding and progress to next step
+      _calendarKey.currentState?.startOnboarding();
+      OnboardingController.nextStep();
+
+      return;
+    }
+
     if (_isOnboardingActive) {
-      // Check if we're on step 9 and user is tapping Calendar tab
-      if (_onboardingStep == 9 && index == 0) {
-        AppLogger.info('Calendar navigation allowed during onboarding step 9', tag: 'MainScreen');
-
-        // Start calendar onboarding and progress to next step
-        _calendarKey.currentState?.startOnboarding();
-        OnboardingController.nextStep(); // Progress to step 10
-
-        // Allow this navigation - continue to the code below
-      } else {
-        AppLogger.warning('Navigation blocked during onboarding', tag: 'MainScreen');
-        return;
-      }
+      AppLogger.warning('Navigation blocked during onboarding - step: $_onboardingStep, index: $index', tag: 'MainScreen');
+      return;
     }
 
     AppLogger.info('Navigation tab tapped: ${_getTabName(index)}', tag: 'MainScreen');
@@ -526,6 +544,8 @@ class _MainScreenState extends State<MainScreen> {
           calendarKey: _calendarTabKey,
           diaryKey: _diaryTabKey,
           trendsKey: _trendsTabKey,
+          isOnboardingActive: _isOnboardingActive,
+          onboardingStep: _onboardingStep,
         ),
       ),
     );
