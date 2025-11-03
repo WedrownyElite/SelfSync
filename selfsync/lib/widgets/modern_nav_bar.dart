@@ -27,7 +27,9 @@ class ModernNavBar extends StatelessWidget {
 
     // Log nav bar state during onboarding
     if (isOnboardingActive) {
-      AppLogger.debug('NavBar state: step=$onboardingStep, currentIndex=$currentIndex', tag: 'NavBar');
+      AppLogger.debug(
+          'NavBar state: step=$onboardingStep, currentIndex=$currentIndex',
+          tag: 'NavBar');
     }
 
     return Container(
@@ -91,8 +93,12 @@ class ModernNavBar extends StatelessWidget {
     required Color color,
     GlobalKey? itemKey,
   }) {
-    // During onboarding, only allow Calendar tab (index 0) on step 9
-    final shouldBlock = isOnboardingActive && !(onboardingStep == 9 && index == 0);
+    // During onboarding:
+    // - Allow Calendar tab (index 0) on step 8 (displays as "Step 9")
+    // - Allow Trends tab (index 2) on step 10 (displays as "Step 11")
+    final shouldBlock = isOnboardingActive &&
+        !(onboardingStep == 8 && index == 0) &&
+        !(onboardingStep == 10 && index == 2);
 
     // Debug logging for each nav item during onboarding
     if (isOnboardingActive) {
@@ -108,7 +114,9 @@ class ModernNavBar extends StatelessWidget {
             key: itemKey,
             onTap: () {
               if (isOnboardingActive) {
-                AppLogger.info('Tab $index ($label) tapped - step=$onboardingStep', tag: 'NavBar');
+                AppLogger.info(
+                    'Tab $index ($label) tapped - step=$onboardingStep',
+                    tag: 'NavBar');
               }
               onTap(index);
             },
@@ -122,7 +130,8 @@ class ModernNavBar extends StatelessWidget {
                     curve: Curves.easeOutCubic,
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: isSelected ? color.withValues(alpha: 0.15) : Colors.transparent,
+                      color: isSelected ? color.withValues(alpha: 0.15) : Colors
+                          .transparent,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
@@ -136,7 +145,8 @@ class ModernNavBar extends StatelessWidget {
                     duration: const Duration(milliseconds: 300),
                     style: TextStyle(
                       fontSize: 11,
-                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight
+                          .w500,
                       color: isSelected ? color : Colors.grey[400],
                     ),
                     child: Text(label),
