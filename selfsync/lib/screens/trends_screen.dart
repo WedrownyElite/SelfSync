@@ -17,6 +17,7 @@ class TrendsScreen extends StatefulWidget {
   final SideDrawerController drawerController;
   final ThemeService themeService;
   final GlobalKey? datePresetsKey;
+  final GlobalKey? comparisonKey;
   final GlobalKey? streakKey;
   final GlobalKey? averageMoodKey;
   final GlobalKey? bestWorstKey;
@@ -39,6 +40,7 @@ class TrendsScreen extends StatefulWidget {
     this.activityKey,
     this.distributionKey,
     this.insightsKey,
+    this.comparisonKey,
   });
 
   @override
@@ -172,16 +174,10 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
 
           // Widget position relative to the current scroll
           final widgetTopInViewport = widgetPosition.dy;
-          final widgetBottomInViewport = widgetTopInViewport + widgetHeight;
 
-          AppLogger.info('Widget position - Top: $widgetTopInViewport, Bottom: $widgetBottomInViewport', tag: 'TrendsScreen.Scroll');
+          AppLogger.info('Widget position - Top: $widgetTopInViewport', tag: 'TrendsScreen.Scroll');
 
-          // Check if widget is already fully visible
-          if (widgetTopInViewport >= viewportTop && widgetBottomInViewport <= viewportBottom) {
-            AppLogger.success('Widget already fully visible, no scroll needed', tag: 'TrendsScreen.Scroll');
-            return;
-          }
-
+          // ALWAYS scroll to center the widget - remove the visibility check
           // Calculate target scroll position to center the widget in the viewport
           final targetScrollOffset = currentScroll + widgetTopInViewport - viewportTop - (viewportHeight / 2) + (widgetHeight / 2);
 
@@ -192,7 +188,7 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
 
           AppLogger.info('Scrolling from $currentScroll to $finalScroll (max: $maxScroll)', tag: 'TrendsScreen.Scroll');
 
-          // Just scroll, don't auto-advance
+          // Scroll to center the widget
           _scrollController.animateTo(
             finalScroll,
             duration: const Duration(milliseconds: 800),
@@ -3151,6 +3147,7 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
     }
 
     return Container(
+      key: widget.comparisonKey,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(

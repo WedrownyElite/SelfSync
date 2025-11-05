@@ -109,6 +109,11 @@ class MoodLogScreenState extends State<MoodLogScreen>
   int _onboardingStep = 0;
   bool _onboardingSliderExpanded = false;
 
+  // Helper getter to choose which entries to use
+  List<MoodEntry> get allEntries => _isOnboardingActive
+      ? widget.moodService.entriesExcludingTestData
+      : widget.moodService.entries;
+  
   @override
   void initState() {
     super.initState();
@@ -171,27 +176,45 @@ class MoodLogScreenState extends State<MoodLogScreen>
       AppLogger.success('Date filter applied (calendar collapsed)', tag: 'MoodLog');
     }
 
-    // If we have an initial date, scroll to it
-    if (widget.initialDate != null) {
-      AppLogger.info(
-          'Opening with initial date: ${DateFormat('yyyy-MM-dd').format(widget.initialDate!)}',
-          tag: 'MoodLog'
-      );
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _scrollToDate(widget.initialDate!);
+    // Scroll to initial date or bottom after build completes AND data is loaded
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Wait for mood service to finish loading
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (!mounted) return;
+
+        if (widget.initialDate != null) {
+          // If we have an initial date, scroll to it
+          AppLogger.info('Scrolling to initial date: ${widget.initialDate}', tag: 'MoodLog');
+          _scrollToDate(widget.initialDate!);
+        } else {
+          // Always scroll to absolute bottom (most recent)
+          AppLogger.info('Scrolling to bottom (most recent)', tag: 'MoodLog');
+          _fadeController.forward();
+
+          // Additional delay to ensure list is built with all entries
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (_scrollController.hasClients && mounted) {
+              final maxExtent = _scrollController.position.maxScrollExtent;
+              AppLogger.info('Max scroll extent: $maxExtent', tag: 'MoodLog');
+
+              if (maxExtent > 0) {
+                _scrollController.jumpTo(maxExtent);
+                AppLogger.success('Scrolled to bottom: $maxExtent', tag: 'MoodLog');
+              } else {
+                AppLogger.warning('No scroll extent yet, retrying...', tag: 'MoodLog');
+                // Retry once more if list isn't ready
+                Future.delayed(const Duration(milliseconds: 200), () {
+                  if (_scrollController.hasClients && mounted) {
+                    _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+                    AppLogger.success('Scrolled to bottom (retry)', tag: 'MoodLog');
+                  }
+                });
+              }
+            }
+          });
+        }
       });
-    } else {
-      // Start animations and scroll to bottom to show most recent messages
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _fadeController.forward();
-        // Scroll to bottom after a short delay to ensure list is built
-        Future.delayed(const Duration(milliseconds: 100), () {
-          if (_scrollController.hasClients) {
-            _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
-          }
-        });
-      });
-    }
+    });
 
     widget.moodService.addListener(_onMoodServiceUpdate);
     AppLogger.debug('Listening to MoodService updates', tag: 'MoodLog');
@@ -225,7 +248,7 @@ class MoodLogScreenState extends State<MoodLogScreen>
   }
 
   void _calculateAvailableDates() {
-    final entries = widget.moodService.entries;
+    final entries = allEntries;
     if (entries.isEmpty) {
       // Default to current month/year if no entries
       _availableMonths = [DateTime.now()];
@@ -331,7 +354,27 @@ class MoodLogScreenState extends State<MoodLogScreen>
     _lastCacheUpdate = null;
 
     AppLogger.info('Cleared mood data cache', tag: 'MoodLog.Calendar');
-    if (mounted) setState(() {});
+
+    if (mounted) {
+      setState(() {});
+
+      // If no date filter is active, scroll to bottom to show newest entries
+      // Wait for ListView to rebuild with new data
+      if (_selectedStartDate == null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          // Additional delay to ensure ListView has built
+          Future.delayed(const Duration(milliseconds: 150), () {
+            if (mounted && _scrollController.hasClients) {
+              final maxExtent = _scrollController.position.maxScrollExtent;
+              if (maxExtent > 0) {
+                _scrollController.jumpTo(maxExtent);
+                AppLogger.success('Auto-scrolled to bottom after data update: $maxExtent', tag: 'MoodLog');
+              }
+            }
+          });
+        });
+      }
+    }
   }
 
   void _loadDateRange(DateTime? startDate, DateTime? endDate) {
@@ -382,9 +425,18 @@ class MoodLogScreenState extends State<MoodLogScreen>
     // Progress onboarding
     OnboardingController.nextStep();
 
+    // Close slider after submission during onboarding
+    if (_isOnboardingActive && _onboardingSliderExpanded) {
+      setState(() {
+        _isInputExpanded = false;
+        _onboardingSliderExpanded = false;
+      });
+      AppLogger.info('Slider closed after onboarding submission', tag: 'MoodLog');
+    }
+
     // Capture the ID of the newly added entry (it's the first one after adding)
-    if (widget.moodService.entries.isNotEmpty) {
-      _newlySubmittedEntryId = widget.moodService.entries.first.id;
+    if (allEntries.isNotEmpty) {
+      _newlySubmittedEntryId = allEntries.first.id;
       AppLogger.success('Mood entry added successfully - ID: $_newlySubmittedEntryId', tag: 'MoodLog');
 
       // Clear the animation flag after animation completes
@@ -959,9 +1011,9 @@ class MoodLogScreenState extends State<MoodLogScreen>
     final currentYear = DateTime.now().year;
 
     // Get earliest year from mood data, or use 2020 as fallback
-    final earliestYear = widget.moodService.entries.isEmpty
+    final earliestYear = allEntries.isEmpty
         ? currentYear - 10
-        : widget.moodService.entries.map((e) => e.timestamp.year).reduce((a, b) => a < b ? a : b);
+        : allEntries.map((e) => e.timestamp.year).reduce((a, b) => a < b ? a : b);
 
     // Only years from earliest data year to current year (no future)
     final years = List.generate(
@@ -1038,7 +1090,7 @@ class MoodLogScreenState extends State<MoodLogScreen>
     final startTime = DateTime.now();
 
     // Calculate mood data for this month
-    final monthEntries = widget.moodService.entries.where((entry) {
+    final monthEntries = allEntries.where((entry) {
       return entry.timestamp.year == _selectedCalendarMonth.year &&
           entry.timestamp.month == _selectedCalendarMonth.month;
     }).toList();
@@ -1291,7 +1343,7 @@ class MoodLogScreenState extends State<MoodLogScreen>
       // Filter entries based on selection
       if (_selectedEndDate != null) {
         // Date range
-        entriesToShow = widget.moodService.entries.where((entry) {
+        entriesToShow = allEntries.where((entry) {
           final entryDate = DateTime(entry.timestamp.year, entry.timestamp.month, entry.timestamp.day);
           final start = DateTime(_selectedStartDate!.year, _selectedStartDate!.month, _selectedStartDate!.day);
           final end = DateTime(_selectedEndDate!.year, _selectedEndDate!.month, _selectedEndDate!.day);
@@ -1302,7 +1354,7 @@ class MoodLogScreenState extends State<MoodLogScreen>
         }).toList();
       } else {
         // Single date
-        entriesToShow = widget.moodService.entries.where((entry) {
+        entriesToShow = allEntries.where((entry) {
           return entry.timestamp.year == _selectedStartDate!.year &&
               entry.timestamp.month == _selectedStartDate!.month &&
               entry.timestamp.day == _selectedStartDate!.day;
@@ -1310,7 +1362,7 @@ class MoodLogScreenState extends State<MoodLogScreen>
       }
     } else {
       // Show all entries
-      entriesToShow = widget.moodService.entries;
+      entriesToShow = allEntries;
     }
 
     if (entriesToShow.isEmpty) {

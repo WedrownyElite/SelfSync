@@ -24,6 +24,7 @@ class OnboardingOverlay extends StatefulWidget {
 class OnboardingOverlayState extends State<OnboardingOverlay>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   int _currentStep = 0;
+  bool _isStepDelayed = false; // New: flag to delay rendering
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
   bool _isKeyboardVisible = false;
@@ -106,13 +107,64 @@ class OnboardingOverlayState extends State<OnboardingOverlay>
   void nextStep() {
     if (_currentStep < widget.steps.length - 1) {
       HapticFeedback.lightImpact();
-      setState(() => _currentStep++);
-      _logStep();
-      widget.onStepChanged?.call(_currentStep);
 
-      // Restart card animation for new step
-      _cardAnimationController.reset();
-      _cardAnimationController.forward();
+      final nextStepIndex = _currentStep + 1;
+
+      // Special handling for steps 14 and 16 (streak and best/worst)
+      // We want to hide the overlay while scrolling
+      // Step 15 (average mood) is on the same Y level as streak, so no scroll needed
+      if (nextStepIndex == 14 || nextStepIndex == 16) {
+        // Set delay flag to hide the overlay
+        setState(() {
+          _isStepDelayed = true;
+          _currentStep = nextStepIndex;
+        });
+
+        _logStep();
+        widget.onStepChanged?.call(_currentStep);
+
+        // After 1100ms, show the step
+        Future.delayed(const Duration(milliseconds: 1100), () {
+          if (mounted) {
+            setState(() {
+              _isStepDelayed = false;
+            });
+            // Restart card animation
+            _cardAnimationController.reset();
+            _cardAnimationController.forward();
+          }
+        });
+      } else if (nextStepIndex == 15) {
+        // Step 15: shorter delay, no scroll
+        setState(() {
+          _isStepDelayed = true;
+          _currentStep = nextStepIndex;
+        });
+
+        _logStep();
+        widget.onStepChanged?.call(_currentStep);
+
+        // After 300ms, show the step
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted) {
+            setState(() {
+              _isStepDelayed = false;
+            });
+            // Restart card animation
+            _cardAnimationController.reset();
+            _cardAnimationController.forward();
+          }
+        });
+      } else {
+        // Normal step progression
+        setState(() => _currentStep = nextStepIndex);
+        _logStep();
+        widget.onStepChanged?.call(_currentStep);
+
+        // Restart card animation for new step
+        _cardAnimationController.reset();
+        _cardAnimationController.forward();
+      }
     } else {
       AppLogger.success('Onboarding completed', tag: 'Onboarding');
       widget.onComplete();
@@ -123,6 +175,11 @@ class OnboardingOverlayState extends State<OnboardingOverlay>
   Widget build(BuildContext context) {
     final step = widget.steps[_currentStep];
     final theme = Theme.of(context);
+
+    // If step is delayed, don't render anything
+    if (_isStepDelayed) {
+      return const SizedBox.shrink();
+    }
 
     return Stack(
       children: [
@@ -279,116 +336,113 @@ class OnboardingOverlayState extends State<OnboardingOverlay>
           ),
         );
       },
-      child: IgnorePointer(
-        ignoring: step.requiresAction,
-        child: GestureDetector(
-          onTap: (!step.requiresAction && !step.showOverlay) ? nextStep : null,
-          child: Material(
-            color: Colors.transparent,
-            child: Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    theme.colorScheme.primaryContainer,
-                    theme.colorScheme.secondaryContainer,
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.5),
-                  width: 2,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.3),
-                    blurRadius: 20,
-                    offset: const Offset(0, 10),
-                  ),
+      child: GestureDetector(
+        onTap: !step.requiresAction ? nextStep : null,
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  theme.colorScheme.primaryContainer,
+                  theme.colorScheme.secondaryContainer,
                 ],
               ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Step indicator
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        'Step ${_currentStep + 1} of ${widget.steps.length}',
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: theme.colorScheme.onPrimary,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: theme.colorScheme.primary.withValues(alpha: 0.5),
+                width: 2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Step indicator
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary,
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    const SizedBox(height: 12),
-
-                    // Title
-                    Text(
-                      step.title,
-                      style: theme.textTheme.titleLarge?.copyWith(
+                    child: Text(
+                      'Step ${_currentStep + 1} of ${widget.steps.length}',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onPrimary,
                         fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.onPrimaryContainer,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                  ),
+                  const SizedBox(height: 12),
 
-                    // Description
-                    Text(
-                      step.description,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onPrimaryContainer.withValues(alpha: 0.9),
-                        height: 1.4,
-                      ),
+                  // Title
+                  Text(
+                    step.title,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.onPrimaryContainer,
                     ),
+                  ),
+                  const SizedBox(height: 8),
 
-                    // Action hint
-                    if (step.actionHint != null) ...[
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Icon(
-                            step.requiresAction ? Icons.touch_app : Icons.tap_and_play,
-                            color: theme.colorScheme.primary,
-                            size: 20,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              step.actionHint!,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.primary,
-                                fontWeight: FontWeight.w600,
-                              ),
+                  // Description
+                  Text(
+                    step.description,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onPrimaryContainer.withValues(alpha: 0.9),
+                      height: 1.4,
+                    ),
+                  ),
+
+                  // Action hint
+                  if (step.actionHint != null) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Icon(
+                          step.requiresAction ? Icons.touch_app : Icons.tap_and_play,
+                          color: theme.colorScheme.primary,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            step.actionHint!,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.primary,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
-                        ],
-                      ),
-                    ],
+                        ),
+                      ],
+                    ),
+                  ],
 
-                    // Tap to continue (non-interactive only)
-                    if (!step.requiresAction) ...[
-                      const SizedBox(height: 16),
-                      Center(
-                        child: Text(
-                          step.showOverlay ? 'Tap anywhere to continue' : 'Tap here to continue',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.primary,
-                            fontWeight: FontWeight.w600,
-                          ),
+                  // Tap to continue (non-interactive only)
+                  if (!step.requiresAction) ...[
+                    const SizedBox(height: 16),
+                    Center(
+                      child: Text(
+                        step.showOverlay ? 'Tap anywhere to continue' : 'Tap to continue',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                    ],
+                    ),
                   ],
-                ),
+                ],
               ),
             ),
           ),

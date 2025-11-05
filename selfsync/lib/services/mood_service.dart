@@ -6,14 +6,46 @@ import '../models/mood_entry.dart';
 
 class MoodService extends ChangeNotifier {
   final List<MoodEntry> _entries = [];
+  final Set<String> _testDataIds = {};
   static const String _storageKey = 'mood_entries';
   static const String _hasLoadedSampleDataKey = 'has_loaded_sample_data';
   bool _isLoaded = false;
 
   List<MoodEntry> get entries => List.unmodifiable(_entries);
 
+  /// Get entries excluding test data (for Mood Diary during onboarding)
+  List<MoodEntry> get entriesExcludingTestData =>
+      List.unmodifiable(_entries.where((e) => !_testDataIds.contains(e.id)));
+
+  /// Check if we have test data
+  bool get hasTestData => _testDataIds.isNotEmpty;
+
   MoodService() {
     _loadEntries();
+  }
+
+  /// Add a test data entry (for onboarding)
+  void addTestEntry(String message, int moodRating, {DateTime? timestamp}) {
+    final id = (timestamp ?? DateTime.now()).millisecondsSinceEpoch.toString();
+    final entry = MoodEntry(
+      id: id,
+      message: message,
+      moodRating: moodRating,
+      timestamp: timestamp ?? DateTime.now(),
+    );
+    _entries.insert(0, entry);
+    _testDataIds.add(id); // Mark as test data
+    notifyListeners();
+    // Don't save test data to storage
+  }
+
+  /// Clear all test data entries
+  void clearTestData() {
+    final count = _testDataIds.length;
+    _entries.removeWhere((entry) => _testDataIds.contains(entry.id));
+    _testDataIds.clear();
+    notifyListeners();
+    debugPrint('Cleared $count test data entries');
   }
 
   Future<void> _loadEntries() async {
@@ -308,7 +340,7 @@ class MoodService extends ChangeNotifier {
     _entries.clear();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_storageKey);
-    await prefs.remove(_hasLoadedSampleDataKey);
+    // Keep the flag so sample data doesn't auto-generate again
     notifyListeners();
     debugPrint('All data cleared');
   }
