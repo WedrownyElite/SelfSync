@@ -7,6 +7,7 @@ import '../widgets/side_drawer.dart';
 import '../services/theme_service.dart';
 import '../utils/performance_test_helper.dart';
 import '../utils/app_logger.dart';
+import '../widgets/interactive_tutorial_overlay.dart';
 
 enum DisplayMode {
   normal,
@@ -944,7 +945,13 @@ class CalendarScreenState extends State<CalendarScreen>
         children: [
           // Compact header - always visible
           InkWell(
+            key: widget.viewToggleKey,
             onTap: () {
+              if (_isOnboardingActive) {
+                AppLogger.info('View options tapped during onboarding - progressing', tag: 'Onboarding');
+                OnboardingController.nextStep();
+              }
+
               setState(() {
                 _isModePickerExpanded = !_isModePickerExpanded;
               });

@@ -212,7 +212,7 @@ class MoodLogScreenState extends State<MoodLogScreen>
 
       final maxScroll = _scrollController.position.maxScrollExtent;
       final currentScroll = _scrollController.position.pixels;
-      final threshold = 200.0;
+      final threshold = 100.0;
 
       final shouldShow = (maxScroll - currentScroll) > threshold;
 
@@ -517,7 +517,7 @@ class MoodLogScreenState extends State<MoodLogScreen>
 // Scroll to bottom button with smooth animations
               if (isToday)
                 Positioned(
-                  bottom: 90, // Just above the input area
+                  bottom: 100, // Just above the input area
                   left: 0,
                   right: 0,
                   child: IgnorePointer(
@@ -875,7 +875,7 @@ class MoodLogScreenState extends State<MoodLogScreen>
                   if (_scrollController.hasClients) {
                     final maxScroll = _scrollController.position.maxScrollExtent;
                     final currentScroll = _scrollController.position.pixels;
-                    final threshold = 200.0;
+                    final threshold = 100.0;
                     final shouldShow = (maxScroll - currentScroll) > threshold;
 
                     if (shouldShow != _showScrollToBottomButton) {
@@ -1259,7 +1259,7 @@ class MoodLogScreenState extends State<MoodLogScreen>
                 if (_scrollController.hasClients) {
                   final maxScroll = _scrollController.position.maxScrollExtent;
                   final currentScroll = _scrollController.position.pixels;
-                  final threshold = 200.0;
+                  final threshold = 100.0;
                   final shouldShow = (maxScroll - currentScroll) > threshold;
 
                   if (shouldShow != _showScrollToBottomButton) {

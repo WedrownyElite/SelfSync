@@ -175,16 +175,24 @@ class _MainScreenState extends State<MainScreen> {
   bool _isOnboardingActive = false;
   int _onboardingStep = 0;
 
-  // Tutorial keys for CalendarScreen
-  final GlobalKey _tutorialCalendarViewToggleKey = GlobalKey();
-
   // Tutorial keys for TrendsScreen  
   final GlobalKey _tutorialTrendsDatePresetsKey = GlobalKey();
 
   final GlobalKey<CalendarScreenState> _calendarKey = GlobalKey<CalendarScreenState>();
   final GlobalKey<TrendsScreenState> _trendsKey = GlobalKey<TrendsScreenState>();
 
+  // Tutorial keys for TrendsScreen  
+  final GlobalKey _tutorialCalendarViewToggleKey = GlobalKey();
+  final GlobalKey _tutorialTrendsStreakKey = GlobalKey();
+  final GlobalKey _tutorialTrendsAverageMoodKey = GlobalKey();
+  final GlobalKey _tutorialTrendsBestWorstKey = GlobalKey();
+  final GlobalKey _tutorialTrendsMoodChartKey = GlobalKey();
+  final GlobalKey _tutorialTrendsActivityKey = GlobalKey();
+  final GlobalKey _tutorialTrendsDistributionKey = GlobalKey();
+  final GlobalKey _tutorialTrendsInsightsKey = GlobalKey();
+
   bool _hasGeneratedFakeData = false;
+  final List<String> _fakeDataEntryIds = [];
 
   @override
   void initState() {
@@ -209,6 +217,13 @@ class _MainScreenState extends State<MainScreen> {
       drawerController: _drawerController,
       themeService: widget.themeService,
       datePresetsKey: _tutorialTrendsDatePresetsKey,
+      streakKey: _tutorialTrendsStreakKey,
+      averageMoodKey: _tutorialTrendsAverageMoodKey,
+      bestWorstKey: _tutorialTrendsBestWorstKey,
+      moodChartKey: _tutorialTrendsMoodChartKey,
+      activityKey: _tutorialTrendsActivityKey,
+      distributionKey: _tutorialTrendsDistributionKey,
+      insightsKey: _tutorialTrendsInsightsKey,
     );
 
     widget.analyticsService.trackScreenView(_getTabName(_currentIndex));
@@ -278,7 +293,7 @@ class _MainScreenState extends State<MainScreen> {
           actionHint: 'Tap to begin',
           requiresAction: false,
           centerCard: true,
-          showOverlay: false, // ADD THIS - allows tapping anywhere including the card
+          showOverlay: false,
         ),
         OnboardingStep(
           title: 'Add a Mood Entry',
@@ -340,12 +355,12 @@ class _MainScreenState extends State<MainScreen> {
         OnboardingStep(
           title: 'Calendar View Options',
           description: 'You can customize how you view your calendar! Tap the View Options button to explore different layouts.',
-          targetKey: _tutorialCalendarViewToggleKey, // ADD SPOTLIGHT
+          targetKey: _tutorialCalendarViewToggleKey,
           actionHint: 'Tap View Options',
-          requiresAction: true, // CHANGE TO TRUE
+          requiresAction: true,
           forceTopPosition: true,
-          showOverlay: false,
         ),
+        // STEP 10
         OnboardingStep(
           title: 'Discover Trends 📊',
           description: 'Now let\'s explore your mood analytics! Tap the Trends tab to see insights and patterns.',
@@ -353,14 +368,74 @@ class _MainScreenState extends State<MainScreen> {
           actionHint: 'Tap the Trends tab',
           requiresAction: true,
         ),
+        // STEP 11 - Date Range (already at top, no scroll needed)
         OnboardingStep(
           title: 'Date Range Selection',
           description: 'Use these buttons to view your trends over different time periods - from 7 days to your entire history!',
           targetKey: _tutorialTrendsDatePresetsKey,
+          actionHint: 'Try tapping a date range',
+          requiresAction: true,
+        ),
+        // STEP 12 - Insights (will scroll then spotlight)
+        OnboardingStep(
+          title: 'Insights Card 💡',
+          description: 'Get personalized insights based on your mood patterns. We analyze your data to provide helpful observations!',
+          targetKey: _tutorialTrendsInsightsKey,
           actionHint: 'Tap to continue',
           requiresAction: false,
-          showOverlay: false,
         ),
+        // STEP 13 - Streak (will scroll then spotlight)
+        OnboardingStep(
+          title: 'Streak Counter 🔥',
+          description: 'Track your logging consistency! Your current streak shows how many consecutive days you\'ve logged, while best streak shows your record.',
+          targetKey: _tutorialTrendsStreakKey,
+          actionHint: 'Tap to continue',
+          requiresAction: false,
+        ),
+        // STEP 14 - Average (will scroll then spotlight)
+        OnboardingStep(
+          title: 'Average Mood',
+          description: 'This shows your average mood rating for the selected time period. A higher number means better overall mood!',
+          targetKey: _tutorialTrendsAverageMoodKey,
+          actionHint: 'Tap to continue',
+          requiresAction: false,
+        ),
+        // STEP 15 - Best/Worst (will scroll then spotlight)
+        OnboardingStep(
+          title: 'Best & Worst Days',
+          description: 'See your highest and lowest mood days at a glance. These can help you identify patterns and triggers.',
+          targetKey: _tutorialTrendsBestWorstKey,
+          actionHint: 'Tap to continue',
+          requiresAction: false,
+        ),
+        // STEP 16 - Chart (scroll only, auto-advance, NO spotlight)
+        OnboardingStep(
+          title: 'Mood Trend Chart 📈',
+          description: 'This chart visualizes how your mood changes over time. Look for patterns, trends, and correlations with life events!',
+          actionHint: 'Scrolling...',
+          requiresAction: false,
+          showOverlay: false,
+          centerCard: true,
+        ),
+        // STEP 17 - Distribution (scroll only, auto-advance, NO spotlight)
+        OnboardingStep(
+          title: 'Mood Distribution',
+          description: 'See how often you experience different mood levels. Swipe to see different visualizations!',
+          actionHint: 'Scrolling...',
+          requiresAction: false,
+          showOverlay: false,
+          centerCard: true,
+        ),
+        // STEP 18 - Activity (scroll only, auto-advance, NO spotlight)
+        OnboardingStep(
+          title: 'Activity Heatmap',
+          description: 'This calendar shows your logging activity. Darker colors mean more entries logged that day - aim for consistency!',
+          actionHint: 'Scrolling...',
+          requiresAction: false,
+          showOverlay: false,
+          centerCard: true,
+        ),
+        // STEP 19 - Done
         OnboardingStep(
           title: 'All Set! 🎉',
           description: 'You\'re ready to track your moods and discover your emotional patterns! Start logging consistently to unlock deeper insights.',
@@ -377,14 +452,34 @@ class _MainScreenState extends State<MainScreen> {
           AppLogger.separator(label: 'STEP CHANGE');
           AppLogger.info('Onboarding step changed to: $stepIndex', tag: 'MainScreen');
 
-          // Track current step - CRITICAL!
-          setState(() {
-            _onboardingStep = stepIndex;
-          });
+          // DON'T update state immediately for scroll steps - delay it
+          if (stepIndex >= 12 && stepIndex <= 15) {
+            // For spotlight steps, delay showing the card until after scroll
+            _trendsKey.currentState?.setOnboardingStep(stepIndex);
 
-          AppLogger.debug('_onboardingStep updated to: $_onboardingStep', tag: 'MainScreen');
-          AppLogger.debug('_isOnboardingActive: $_isOnboardingActive', tag: 'MainScreen');
-          AppLogger.separator();
+            // Trigger scroll immediately
+            if (stepIndex == 12) {
+              _trendsKey.currentState?.scrollToWidget(_tutorialTrendsInsightsKey);
+            } else if (stepIndex == 13) {
+              _trendsKey.currentState?.scrollToWidget(_tutorialTrendsStreakKey);
+            } else if (stepIndex == 14) {
+              _trendsKey.currentState?.scrollToWidget(_tutorialTrendsAverageMoodKey);
+            } else if (stepIndex == 15) {
+              _trendsKey.currentState?.scrollToWidget(_tutorialTrendsBestWorstKey);
+            }
+
+            // Delay updating main state so overlay doesn't show until scroll completes
+            Future.delayed(const Duration(milliseconds: 1100), () {
+              setState(() {
+                _onboardingStep = stepIndex;
+              });
+            });
+          } else {
+            // For all other steps, update immediately
+            setState(() {
+              _onboardingStep = stepIndex;
+            });
+          }
 
           _moodLogKey.currentState?.setOnboardingStep(stepIndex);
 
@@ -392,14 +487,39 @@ class _MainScreenState extends State<MainScreen> {
             _expandMoodSlider();
           }
 
-          // Generate fake data when reaching step 10 (before Trends tab is tapped)
           if (stepIndex == 10) {
             _calendarKey.currentState?.endOnboarding();
             _generateFakeDataForOnboarding();
           }
 
-          // End trends onboarding at step 12 (last step)
-          if (stepIndex == 12) {
+          if (stepIndex == 11) {
+            _trendsKey.currentState?.setOnboardingStep(stepIndex);
+            _trendsKey.currentState?.scrollToTop();
+          }
+
+          // For steps 16-18: Just scroll and auto-advance (no spotlight)
+          if (stepIndex == 16) {
+            _trendsKey.currentState?.scrollToWidget(_tutorialTrendsMoodChartKey);
+            Future.delayed(const Duration(milliseconds: 1200), () {
+              OnboardingController.nextStep();
+            });
+          }
+
+          if (stepIndex == 17) {
+            _trendsKey.currentState?.scrollToWidget(_tutorialTrendsDistributionKey);
+            Future.delayed(const Duration(milliseconds: 1200), () {
+              OnboardingController.nextStep();
+            });
+          }
+
+          if (stepIndex == 18) {
+            _trendsKey.currentState?.scrollToWidget(_tutorialTrendsActivityKey);
+            Future.delayed(const Duration(milliseconds: 1200), () {
+              OnboardingController.nextStep();
+            });
+          }
+
+          if (stepIndex == 19) {
             _trendsKey.currentState?.endOnboarding();
           }
         },
@@ -432,6 +552,7 @@ class _MainScreenState extends State<MainScreen> {
 
     final now = DateTime.now();
     final random = Random();
+    _fakeDataEntryIds.clear(); // Clear previous IDs
 
     for (int i = 0; i < 30; i++) {
       final date = now.subtract(Duration(days: i));
@@ -459,20 +580,31 @@ class _MainScreenState extends State<MainScreen> {
           rating,
           timestamp: date.subtract(Duration(hours: random.nextInt(12), minutes: random.nextInt(60))),
         );
+
+        // Track the ID of this fake entry
+        if (_moodService.entries.isNotEmpty) {
+          _fakeDataEntryIds.add(_moodService.entries.first.id);
+        }
       }
     }
 
     _hasGeneratedFakeData = true;
-    AppLogger.success('Fake data generated: ${_moodService.entries.length} entries', tag: 'Onboarding');
+    AppLogger.success('Fake data generated: ${_fakeDataEntryIds.length} test entries', tag: 'Onboarding');
   }
 
   void _clearFakeDataAfterOnboarding() {
     if (!_hasGeneratedFakeData) return;
 
     AppLogger.info('Clearing fake onboarding data', tag: 'Onboarding');
-    _moodService.clearAllEntries();
+
+    // Delete only the test entries by their IDs
+    for (final entryId in _fakeDataEntryIds) {
+      _moodService.deleteEntry(entryId);
+    }
+
+    _fakeDataEntryIds.clear();
     _hasGeneratedFakeData = false;
-    AppLogger.success('Fake data cleared', tag: 'Onboarding');
+    AppLogger.success('${_fakeDataEntryIds.length} fake entries cleared, real data preserved', tag: 'Onboarding');
   }
 
   void _expandMoodSlider() {
@@ -533,9 +665,11 @@ class _MainScreenState extends State<MainScreen> {
 
         widget.analyticsService.trackScreenView(_getTabName(index));
 
-        // Start calendar onboarding and progress to next step
-        _calendarKey.currentState?.startOnboarding();
-        OnboardingController.nextStep();
+        // Start calendar onboarding with delay to ensure UI is ready
+        Future.delayed(const Duration(milliseconds: 300), () {
+          _calendarKey.currentState?.startOnboarding();
+          OnboardingController.nextStep();
+        });
 
         return;
       }

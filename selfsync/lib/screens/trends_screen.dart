@@ -9,6 +9,7 @@ import '../widgets/side_drawer.dart';
 import '../utils/app_logger.dart';
 import '../services/theme_service.dart';
 import '../utils/performance_test_helper.dart';
+import '../widgets/interactive_tutorial_overlay.dart';
 
 class TrendsScreen extends StatefulWidget {
   final MoodService moodService;
@@ -16,6 +17,13 @@ class TrendsScreen extends StatefulWidget {
   final SideDrawerController drawerController;
   final ThemeService themeService;
   final GlobalKey? datePresetsKey;
+  final GlobalKey? streakKey;
+  final GlobalKey? averageMoodKey;
+  final GlobalKey? bestWorstKey;
+  final GlobalKey? moodChartKey;
+  final GlobalKey? activityKey;
+  final GlobalKey? distributionKey;
+  final GlobalKey? insightsKey;
 
   const TrendsScreen({
     super.key,
@@ -24,6 +32,13 @@ class TrendsScreen extends StatefulWidget {
     required this.drawerController,
     required this.themeService,
     this.datePresetsKey,
+    this.streakKey,
+    this.averageMoodKey,
+    this.bestWorstKey,
+    this.moodChartKey,
+    this.activityKey,
+    this.distributionKey,
+    this.insightsKey,
   });
 
   @override
@@ -35,6 +50,8 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
   final PageController _distributionPageController = PageController();
   int _currentDistributionPage = 0;
 
+  final ScrollController _scrollController = ScrollController();
+  
   // Month/Year picker state
   bool _isMonthPickerVisible = false;
   bool _isYearPickerVisible = false;
@@ -49,7 +66,7 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
   // ignore: unused_field
   bool _isOnboardingActive = false;
   // ignore: unused_field
-  int _onboardingStep = 0;  
+  int _onboardingStep = 0;
 
   // Custom date range state
   bool _isCalendarExpanded = false;
@@ -88,13 +105,13 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
     _calendarExpandController.dispose();
     _monthPickerController.dispose();
     _yearPickerController.dispose();
+    _scrollController.dispose();
     widget.moodService.removeListener(_onMoodServiceUpdate);
     _distributionPageController.dispose();
     AppLogger.lifecycle('Stopped listening to MoodService updates', tag: 'TrendsScreen');
     super.dispose();
   }
 
-// ADD THESE THREE METHODS:
   void startOnboarding() {
     setState(() {
       _isOnboardingActive = true;
@@ -116,6 +133,90 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
       _onboardingStep = 0;
     });
     AppLogger.info('Trends onboarding ended', tag: 'TrendsScreen');
+  }
+
+  void scrollToWidget(GlobalKey? key) {
+    if (key == null) {
+      AppLogger.warning('Cannot scroll - key is null', tag: 'TrendsScreen');
+      return;
+    }
+
+    // Capture screen height before async operations
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    // Wait for the widget to be rendered
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 200), () {
+        if (!mounted) return;
+
+        // Get RenderObject directly from the key instead of using context
+        final renderObject = key.currentContext?.findRenderObject();
+        if (renderObject == null || renderObject is! RenderBox) {
+          AppLogger.warning('Cannot scroll - render object is null or not a RenderBox', tag: 'TrendsScreen');
+          return;
+        }
+
+        try {
+          // Get the RenderBox of the target widget
+          final widgetPosition = renderObject.localToGlobal(Offset.zero);
+          final widgetHeight = renderObject.size.height;
+
+          // Get the current scroll position
+          final currentScroll = _scrollController.offset;
+
+          // Calculate where the widget currently is relative to the viewport
+          const headerHeight = 150.0;
+          final viewportTop = headerHeight;
+          final viewportBottom = screenHeight - 100;
+          final viewportHeight = viewportBottom - viewportTop;
+
+          // Widget position relative to the current scroll
+          final widgetTopInViewport = widgetPosition.dy;
+          final widgetBottomInViewport = widgetTopInViewport + widgetHeight;
+
+          AppLogger.info('Widget position - Top: $widgetTopInViewport, Bottom: $widgetBottomInViewport', tag: 'TrendsScreen.Scroll');
+
+          // Check if widget is already fully visible
+          if (widgetTopInViewport >= viewportTop && widgetBottomInViewport <= viewportBottom) {
+            AppLogger.success('Widget already fully visible, no scroll needed', tag: 'TrendsScreen.Scroll');
+            return;
+          }
+
+          // Calculate target scroll position to center the widget in the viewport
+          final targetScrollOffset = currentScroll + widgetTopInViewport - viewportTop - (viewportHeight / 2) + (widgetHeight / 2);
+
+          // Clamp to valid scroll range
+          final maxScroll = _scrollController.position.maxScrollExtent;
+          final minScroll = _scrollController.position.minScrollExtent;
+          final finalScroll = targetScrollOffset.clamp(minScroll, maxScroll);
+
+          AppLogger.info('Scrolling from $currentScroll to $finalScroll (max: $maxScroll)', tag: 'TrendsScreen.Scroll');
+
+          // Just scroll, don't auto-advance
+          _scrollController.animateTo(
+            finalScroll,
+            duration: const Duration(milliseconds: 800),
+            curve: Curves.easeInOutCubic,
+          );
+
+          AppLogger.success('Scroll animation started', tag: 'TrendsScreen.Scroll');
+        } catch (e, stackTrace) {
+          AppLogger.error('Failed to scroll to widget: $e\n$stackTrace', tag: 'TrendsScreen.Scroll');
+        }
+      });
+    });
+  }
+
+  void scrollToTop() {
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (!mounted) return;
+
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 600),
+        curve: Curves.easeInOutCubic,
+      );
+    });
   }
 
   void _onMoodServiceUpdate() {
@@ -196,6 +297,7 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
                   : entries.isEmpty
                   ? _buildNoDataForRangeState(theme)
                   : ListView(
+                controller: _scrollController,
                 padding: const EdgeInsets.all(16),
                 children: [
                   const SizedBox(height: 8),
@@ -389,6 +491,12 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
                         _customEndDate = null;
                         _calendarExpandController.reverse();
                       });
+
+                      // Progress onboarding when date range is tapped during step 11
+                      if (_isOnboardingActive && _onboardingStep == 11) {
+                        AppLogger.info('Date range selected during onboarding - progressing', tag: 'Onboarding');
+                        OnboardingController.nextStep();
+                      }
                     }
                   },
                   child: AnimatedContainer(
@@ -930,51 +1038,83 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
     // Calculate consistency score (based on variance)
     final consistencyData = _calculateConsistency(entries);
 
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 16,
-      crossAxisSpacing: 16,
-      childAspectRatio: 1.5,
+    return Column(
       children: [
-        _buildStreakCard(
-          theme,
-          currentStreak,
-          bestStreak,
+        // First row: Streak and Average Mood
+        Row(
+          children: [
+            Expanded(
+              child: _buildStreakCard(
+                theme,
+                currentStreak,
+                bestStreak,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Container(
+                key: widget.averageMoodKey,
+                child: _buildStatCard(
+                  theme,
+                  'Average Mood',
+                  avgMood.toStringAsFixed(1),
+                  Icons.sentiment_satisfied_alt_rounded,
+                  null,
+                ),
+              ),
+            ),
+          ],
         ),
-        _buildStatCard(
-          theme,
-          'Average Mood',
-          avgMood.toStringAsFixed(1),
-          Icons.sentiment_satisfied_alt_rounded,
-          null,
+        const SizedBox(height: 16),
+
+        // Second row: Peak Time and Consistency
+        Row(
+          children: [
+            Expanded(
+              child: _buildStatCard(
+                theme,
+                'Peak Time',
+                _calculatePeakHour(entries) ?? 'N/A',
+                Icons.schedule_rounded,
+                null,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _buildConsistencyCard(
+                theme,
+                consistencyData['score']!,
+                consistencyData['label']!,
+              ),
+            ),
+          ],
         ),
-        _buildStatCard(
-          theme,
-          'Peak Time',
-          _calculatePeakHour(entries) ?? 'N/A',
-          Icons.schedule_rounded,
-          null,
-        ),
-        _buildConsistencyCard(
-          theme,
-          consistencyData['score']!,
-          consistencyData['label']!,
-        ),
-        _buildStatCard(
-          theme,
-          'Best Day',
-          _formatBestDayWithDate(bestEntry),
-          Icons.emoji_emotions_rounded,
-              () => _navigateToDiary(bestEntry.timestamp),
-        ),
-        _buildStatCard(
-          theme,
-          'Toughest Day',
-          _formatToughestDayWithDate(toughestEntry),
-          Icons.mood_bad_rounded,
-              () => _navigateToDiary(toughestEntry.timestamp),
+        const SizedBox(height: 16),
+
+        // Third row: Best and Worst Days
+        Row(
+          key: widget.bestWorstKey,
+          children: [
+            Expanded(
+              child: _buildStatCard(
+                theme,
+                'Best Day',
+                _formatBestDayWithDate(bestEntry),
+                Icons.emoji_emotions_rounded,
+                    () => _navigateToDiary(bestEntry.timestamp),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _buildStatCard(
+                theme,
+                'Toughest Day',
+                _formatToughestDayWithDate(toughestEntry),
+                Icons.mood_bad_rounded,
+                    () => _navigateToDiary(toughestEntry.timestamp),
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -1221,6 +1361,7 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
 
   Widget _buildStreakCard(ThemeData theme, int currentStreak, int bestStreak) {
     return Material(
+      key: widget.streakKey,
       color: Colors.transparent,
       child: InkWell(
         onTap: () => _showStreakDialog(theme, currentStreak, bestStreak),
@@ -1438,6 +1579,7 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
     final chartWidth = needsScrolling ? displayPointCount * 24.0 : double.infinity;
 
     return Container(
+      key: widget.moodChartKey,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
@@ -1812,7 +1954,7 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
       return _buildGridCalendar(theme, entries);
     } else {
       return _buildLinearCalendar(theme, entries);
-    }
+    } 
   }
 
   Widget _buildLinearCalendar(ThemeData theme, List<MoodEntry> entries) {
@@ -1871,6 +2013,7 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
     }
 
     return Container(
+      key: widget.activityKey,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
@@ -2141,6 +2284,7 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
 
     // Build the grid separated by years
     return Container(
+      key: widget.activityKey,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
@@ -2404,6 +2548,7 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
     final total = entries.length;
 
     return Container(
+      key: widget.distributionKey,
       height: 420,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -2465,6 +2610,7 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
       ) {
     return ListView(
       padding: EdgeInsets.zero,
+      physics: const NeverScrollableScrollPhysics(),
       children: distribution.entries.map((entry) {
         final percentage = ((entry.value / total) * 100).toStringAsFixed(0);
         final label = entry.key.split(' ')[0];
@@ -2639,6 +2785,7 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
     if (insights.isEmpty) return const SizedBox.shrink();
 
     return Container(
+      key: widget.insightsKey,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(

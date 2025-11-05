@@ -132,7 +132,7 @@ class OnboardingOverlayState extends State<OnboardingOverlay>
             child: GestureDetector(
               onTap: nextStep,
               child: Container(
-                color: Colors.black.withValues(alpha: 0.6),
+                color: Colors.transparent,
               ),
             ),
           ),
