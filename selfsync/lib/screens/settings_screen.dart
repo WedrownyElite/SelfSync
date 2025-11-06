@@ -4,6 +4,7 @@ import '../services/analytics_service.dart';
 import '../services/mood_service.dart';
 import '../services/onboarding_service.dart';
 import '../widgets/side_drawer.dart';
+import '../utils/app_logger.dart';
 
 class SettingsScreen extends StatefulWidget {
   final ThemeService themeService;
@@ -12,6 +13,12 @@ class SettingsScreen extends StatefulWidget {
   final OnboardingService onboardingService;
   final MoodService moodService;
 
+  // Tutorial keys
+  final GlobalKey? themeModesKey;
+  final GlobalKey? colorThemesKey;
+  final GlobalKey? privacyKey;
+  final GlobalKey? aboutKey;
+
   const SettingsScreen({
     super.key,
     required this.themeService,
@@ -19,13 +26,23 @@ class SettingsScreen extends StatefulWidget {
     required this.drawerController,
     required this.onboardingService,
     required this.moodService,
+    this.themeModesKey,
+    this.colorThemesKey,
+    this.privacyKey,
+    this.aboutKey,
   });
 
   @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
+  State<SettingsScreen> createState() => SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class SettingsScreenState extends State<SettingsScreen> {
+  final ScrollController _scrollController = ScrollController();
+
+  // Onboarding control
+  bool _isOnboardingActive = false;
+  int _onboardingStep = 0;
+
   @override
   void initState() {
     super.initState();
@@ -37,6 +54,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void dispose() {
     widget.themeService.removeListener(_onThemeChanged);
     widget.analyticsService.removeListener(_onAnalyticsChanged);
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -48,6 +66,100 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {});
   }
 
+  void startOnboarding() {
+    setState(() {
+      _isOnboardingActive = true;
+      _onboardingStep = 0;
+    });
+    AppLogger.info('Settings onboarding started', tag: 'SettingsScreen');
+  }
+
+  void setOnboardingStep(int step) {
+    setState(() {
+      _onboardingStep = step;
+    });
+    AppLogger.info('Settings onboarding step set to: $step', tag: 'SettingsScreen');
+  }
+
+  void endOnboarding() {
+    setState(() {
+      _isOnboardingActive = false;
+      _onboardingStep = 0;
+    });
+    AppLogger.info('Settings onboarding ended', tag: 'SettingsScreen');
+  }
+
+  void scrollToWidget(GlobalKey? key) {
+    if (key == null) {
+      AppLogger.warning('Cannot scroll - key is null', tag: 'SettingsScreen');
+      return;
+    }
+
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 200), () {
+        if (!mounted) return;
+
+        final renderObject = key.currentContext?.findRenderObject();
+        if (renderObject == null || renderObject is! RenderBox) {
+          AppLogger.warning('Cannot scroll - render object is null or not a RenderBox', tag: 'SettingsScreen');
+          return;
+        }
+
+        try {
+          final widgetPosition = renderObject.localToGlobal(Offset.zero);
+          final widgetHeight = renderObject.size.height;
+          final currentScroll = _scrollController.offset;
+
+          const headerHeight = 80.0;
+          final viewportTop = headerHeight;
+          final viewportBottom = screenHeight - 100;
+          final viewportHeight = viewportBottom - viewportTop;
+
+          final widgetTopInViewport = widgetPosition.dy;
+
+          AppLogger.info('Widget position - Top: $widgetTopInViewport', tag: 'SettingsScreen.Scroll');
+
+          final targetScrollOffset = currentScroll + widgetTopInViewport - viewportTop - (viewportHeight / 2) + (widgetHeight / 2);
+
+          final maxScroll = _scrollController.position.maxScrollExtent;
+          final minScroll = _scrollController.position.minScrollExtent;
+          final finalScroll = targetScrollOffset.clamp(minScroll, maxScroll);
+
+          AppLogger.info('Scrolling from $currentScroll to $finalScroll (max: $maxScroll)', tag: 'SettingsScreen.Scroll');
+
+          _scrollController.animateTo(
+            finalScroll,
+            duration: const Duration(milliseconds: 800),
+            curve: Curves.easeInOutCubic,
+          );
+
+          AppLogger.success('Scroll animation started', tag: 'SettingsScreen.Scroll');
+        } catch (e, stackTrace) {
+          AppLogger.error('Failed to scroll to widget: $e\n$stackTrace', tag: 'SettingsScreen.Scroll');
+        }
+      });
+    });
+  }
+
+  void scrollToTop() {
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (!mounted) return;
+
+      if (!_scrollController.hasClients) {
+        AppLogger.warning('ScrollController not attached yet', tag: 'SettingsScreen.Scroll');
+        return;
+      }
+
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 600),
+        curve: Curves.easeInOutCubic,
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -55,65 +167,87 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeader(theme),
-              const SizedBox(height: 24),
-              _buildThemeModeSection(theme),
-              const SizedBox(height: 16),
-              _buildColorGradientSection(theme),
-              const SizedBox(height: 16),
-              _buildPrivacySection(theme),
-              const SizedBox(height: 16),
-              _buildOnboardingSection(theme),
-              const SizedBox(height: 16),
-              _buildDataManagementSection(theme),
-              const SizedBox(height: 24),
-              _buildAboutSection(theme),
-            ],
-          ),
+        child: Column(
+          children: [
+            _buildHeader(theme),
+            Expanded(
+              child: SingleChildScrollView(
+                controller: _scrollController,
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 8),
+                    _buildThemeModeSection(theme),
+                    const SizedBox(height: 16),
+                    _buildColorGradientSection(theme),
+                    const SizedBox(height: 16),
+                    _buildPrivacySection(theme),
+                    const SizedBox(height: 16),
+                    _buildOnboardingSection(theme),
+                    const SizedBox(height: 16),
+                    _buildDataManagementSection(theme),
+                    const SizedBox(height: 24),
+                    _buildAboutSection(theme),
+                    const SizedBox(height: 40),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
   Widget _buildHeader(ThemeData theme) {
-    return Row(
-      children: [
-        IconButton(
-          icon: const Icon(Icons.close_rounded),
-          onPressed: () => Navigator.of(context).pop(),
-          tooltip: 'Back',
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Settings',
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Text(
-                'Customize your experience',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                ),
-              ),
-            ],
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
           ),
-        ),
-      ],
+        ],
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            onPressed: () => Navigator.of(context).pop(),
+            tooltip: 'Back',
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Settings',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  'Customize your experience',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildThemeModeSection(ThemeData theme) {
     return Container(
+      key: widget.themeModesKey,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
@@ -194,200 +328,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildDataManagementSection(ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.storage_rounded,
-                size: 24,
-                color: theme.colorScheme.error,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Data Management',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    Text(
-                      'Manage your stored data',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.warning_amber_rounded,
-                  size: 20,
-                  color: theme.colorScheme.error,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'This will permanently delete all your mood entries. This action cannot be undone.',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                      height: 1.4,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () => _showClearDataDialog(context, theme),
-              icon: const Icon(Icons.delete_forever_rounded),
-              label: const Text('Clear All Data'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: theme.colorScheme.error,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                side: BorderSide(
-                  color: theme.colorScheme.error.withValues(alpha: 0.5),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showClearDataDialog(BuildContext context, ThemeData theme) {
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (dialogContext) => AlertDialog(
-        icon: Icon(
-          Icons.warning_rounded,
-          color: theme.colorScheme.error,
-          size: 48,
-        ),
-        title: const Text('Clear All Data?'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'This will permanently delete:',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 12),
-            _buildDeleteItem('All mood entries', theme),
-            _buildDeleteItem('Mood history and trends', theme),
-            _buildDeleteItem('Streak records', theme),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                'This action cannot be undone. Your data will be lost forever.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.error,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              // Clear all mood data
-              await widget.moodService.clearAllData();
-
-              // Track the action
-              widget.analyticsService.trackEvent('data_cleared');
-
-              if (context.mounted) {
-                Navigator.pop(dialogContext);
-
-                // Show confirmation snackbar
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text('All data cleared successfully'),
-                    backgroundColor: theme.colorScheme.error,
-                    behavior: SnackBarBehavior.floating,
-                    duration: const Duration(seconds: 3),
-                  ),
-                );
-              }
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: theme.colorScheme.error,
-              foregroundColor: theme.colorScheme.onError,
-            ),
-            child: const Text('Delete Everything'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDeleteItem(String text, ThemeData theme) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          Icon(
-            Icons.close_rounded,
-            size: 16,
-            color: theme.colorScheme.error,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            text,
-            style: theme.textTheme.bodyMedium,
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildThemeModeOption({
     required ThemeData theme,
     required ThemeMode mode,
@@ -446,6 +386,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildColorGradientSection(ThemeData theme) {
     return Container(
+      key: widget.colorThemesKey,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
@@ -480,7 +421,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                     Text(
-                      'Pick your favorite colors',
+                      'Changes your mood rating colors',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                       ),
@@ -555,6 +496,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildPrivacySection(ThemeData theme) {
     return Container(
+      key: widget.privacyKey,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
@@ -750,12 +692,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 if (mounted) {
                   Navigator.of(context).pop();
 
-                  // Show a snackbar to confirm
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: const Text('Tutorial and privacy policy reset. You\'ll see the welcome screen when you restart.'),
+                      content: const Text('Tutorial and privacy policy reset. Restart the app to see the welcome screen.'),
                       behavior: SnackBarBehavior.floating,
-                      duration: const Duration(seconds: 3),
+                      duration: const Duration(seconds: 4),
                     ),
                   );
                 }
@@ -775,8 +716,199 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Widget _buildDataManagementSection(ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.storage_rounded,
+                size: 24,
+                color: theme.colorScheme.error,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Data Management',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      'Manage your stored data',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.warning_amber_rounded,
+                  size: 20,
+                  color: theme.colorScheme.error,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'This will permanently delete all your mood entries. This action cannot be undone.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _showClearDataDialog(context, theme),
+              icon: const Icon(Icons.delete_forever_rounded),
+              label: const Text('Clear All Data'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: theme.colorScheme.error,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                side: BorderSide(
+                  color: theme.colorScheme.error.withValues(alpha: 0.5),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showClearDataDialog(BuildContext context, ThemeData theme) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => AlertDialog(
+        icon: Icon(
+          Icons.warning_rounded,
+          color: theme.colorScheme.error,
+          size: 48,
+        ),
+        title: const Text('Clear All Data?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'This will permanently delete:',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 12),
+            _buildDeleteItem('All mood entries', theme),
+            _buildDeleteItem('Mood history and trends', theme),
+            _buildDeleteItem('Streak records', theme),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                'This action cannot be undone. Your data will be lost forever.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.error,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              await widget.moodService.clearAllData();
+              widget.analyticsService.trackEvent('data_cleared');
+
+              if (context.mounted) {
+                Navigator.pop(dialogContext);
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text('All data cleared successfully'),
+                    backgroundColor: theme.colorScheme.error,
+                    behavior: SnackBarBehavior.floating,
+                    duration: const Duration(seconds: 3),
+                  ),
+                );
+              }
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: theme.colorScheme.error,
+              foregroundColor: theme.colorScheme.onError,
+            ),
+            child: const Text('Delete Everything'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDeleteItem(String text, ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Icon(
+            Icons.close_rounded,
+            size: 16,
+            color: theme.colorScheme.error,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            text,
+            style: theme.textTheme.bodyMedium,
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildAboutSection(ThemeData theme) {
     return Container(
+      key: widget.aboutKey,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,

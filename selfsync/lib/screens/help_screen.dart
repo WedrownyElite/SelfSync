@@ -5,19 +5,125 @@ import '../utils/app_logger.dart';
 
 class HelpScreen extends StatefulWidget {
   final SideDrawerController drawerController;
+  final GlobalKey? contentKey;
 
   const HelpScreen({
     super.key,
     required this.drawerController,
+    this.contentKey,
   });
 
   @override
-  State<HelpScreen> createState() => _HelpScreenState();
+  State<HelpScreen> createState() => HelpScreenState();
 }
 
-class _HelpScreenState extends State<HelpScreen> {
-  // Track which sections are expanded
+class HelpScreenState extends State<HelpScreen> {
+  final ScrollController _scrollController = ScrollController();
   final Set<String> _expandedSections = {};
+
+  // Onboarding control
+  bool _isOnboardingActive = false;
+  int _onboardingStep = 0;
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void startOnboarding() {
+    setState(() {
+      _isOnboardingActive = true;
+      _onboardingStep = 0;
+    });
+    AppLogger.info('Help onboarding started', tag: 'HelpScreen');
+  }
+
+  void setOnboardingStep(int step) {
+    setState(() {
+      _onboardingStep = step;
+    });
+    AppLogger.info('Help onboarding step set to: $step', tag: 'HelpScreen');
+  }
+
+  void endOnboarding() {
+    setState(() {
+      _isOnboardingActive = false;
+      _onboardingStep = 0;
+    });
+    AppLogger.info('Help onboarding ended', tag: 'HelpScreen');
+  }
+
+  void scrollToWidget(GlobalKey? key) {
+    if (key == null) {
+      AppLogger.warning('Cannot scroll - key is null', tag: 'HelpScreen');
+      return;
+    }
+
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 200), () {
+        if (!mounted) return;
+
+        final renderObject = key.currentContext?.findRenderObject();
+        if (renderObject == null || renderObject is! RenderBox) {
+          AppLogger.warning('Cannot scroll - render object is null or not a RenderBox', tag: 'HelpScreen');
+          return;
+        }
+
+        try {
+          final widgetPosition = renderObject.localToGlobal(Offset.zero);
+          final widgetHeight = renderObject.size.height;
+          final currentScroll = _scrollController.offset;
+
+          const headerHeight = 80.0;
+          final viewportTop = headerHeight;
+          final viewportBottom = screenHeight - 100;
+          final viewportHeight = viewportBottom - viewportTop;
+
+          final widgetTopInViewport = widgetPosition.dy;
+
+          AppLogger.info('Widget position - Top: $widgetTopInViewport', tag: 'HelpScreen.Scroll');
+
+          final targetScrollOffset = currentScroll + widgetTopInViewport - viewportTop - (viewportHeight / 2) + (widgetHeight / 2);
+
+          final maxScroll = _scrollController.position.maxScrollExtent;
+          final minScroll = _scrollController.position.minScrollExtent;
+          final finalScroll = targetScrollOffset.clamp(minScroll, maxScroll);
+
+          AppLogger.info('Scrolling from $currentScroll to $finalScroll (max: $maxScroll)', tag: 'HelpScreen.Scroll');
+
+          _scrollController.animateTo(
+            finalScroll,
+            duration: const Duration(milliseconds: 800),
+            curve: Curves.easeInOutCubic,
+          );
+
+          AppLogger.success('Scroll animation started', tag: 'HelpScreen.Scroll');
+        } catch (e, stackTrace) {
+          AppLogger.error('Failed to scroll to widget: $e\n$stackTrace', tag: 'HelpScreen.Scroll');
+        }
+      });
+    });
+  }
+
+  void scrollToTop() {
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (!mounted) return;
+
+      if (!_scrollController.hasClients) {
+        AppLogger.warning('ScrollController not attached yet', tag: 'HelpScreen.Scroll');
+        return;
+      }
+
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 600),
+        curve: Curves.easeInOutCubic,
+      );
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,6 +137,8 @@ class _HelpScreenState extends State<HelpScreen> {
             _buildHeader(theme),
             Expanded(
               child: ListView(
+                key: widget.contentKey,
+                controller: _scrollController,
                 padding: const EdgeInsets.all(16),
                 children: [
                   const SizedBox(height: 8),
