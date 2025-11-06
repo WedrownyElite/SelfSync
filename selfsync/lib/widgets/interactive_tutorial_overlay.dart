@@ -110,10 +110,9 @@ class OnboardingOverlayState extends State<OnboardingOverlay>
 
       final nextStepIndex = _currentStep + 1;
 
-      // Special handling for steps 14 and 16 (streak and best/worst)
+      // Special handling for steps 14, 16, 18 (scroll steps with spotlight after)
       // We want to hide the overlay while scrolling
-      // Step 15 (average mood) is on the same Y level as streak, so no scroll needed
-      if (nextStepIndex == 14 || nextStepIndex == 16) {
+      if (nextStepIndex == 14 || nextStepIndex == 16 || nextStepIndex == 18) {
         // Set delay flag to hide the overlay
         setState(() {
           _isStepDelayed = true;
@@ -134,8 +133,8 @@ class OnboardingOverlayState extends State<OnboardingOverlay>
             _cardAnimationController.forward();
           }
         });
-      } else if (nextStepIndex == 15) {
-        // Step 15: shorter delay, no scroll
+      } else if (nextStepIndex == 15 || nextStepIndex == 17 || nextStepIndex == 19) {
+        // Steps 15, 17, 19: shorter delay, no scroll (same Y level as previous)
         setState(() {
           _isStepDelayed = true;
           _currentStep = nextStepIndex;

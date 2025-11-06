@@ -65,6 +65,18 @@ class OnboardingService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Reset privacy policy acceptance
+  Future<void> resetPrivacyPolicy() async {
+    _privacyAccepted = false;
+    _privacyAcceptedDate = null;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_privacyAcceptedKey, false);
+    await prefs.remove(_privacyAcceptedDateKey);
+
+    notifyListeners();
+  }
+
   Future<void> resetOnboarding() async {
     _hasCompletedOnboarding = false;
     _hasCompletedTutorial = false;

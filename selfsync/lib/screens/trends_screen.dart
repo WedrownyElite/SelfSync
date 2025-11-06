@@ -20,11 +20,14 @@ class TrendsScreen extends StatefulWidget {
   final GlobalKey? comparisonKey;
   final GlobalKey? streakKey;
   final GlobalKey? averageMoodKey;
-  final GlobalKey? bestWorstKey;
+  final GlobalKey? bestDayKey;
+  final GlobalKey? toughestDayKey;
   final GlobalKey? moodChartKey;
   final GlobalKey? activityKey;
   final GlobalKey? distributionKey;
   final GlobalKey? insightsKey;
+  final GlobalKey? peakTimeKey;
+  final GlobalKey? consistencyKey;
 
   const TrendsScreen({
     super.key,
@@ -35,12 +38,15 @@ class TrendsScreen extends StatefulWidget {
     this.datePresetsKey,
     this.streakKey,
     this.averageMoodKey,
-    this.bestWorstKey,
+    this.bestDayKey,
+    this.toughestDayKey,
     this.moodChartKey,
     this.activityKey,
     this.distributionKey,
     this.insightsKey,
     this.comparisonKey,
+    this.peakTimeKey,
+    this.consistencyKey,
   });
 
   @override
@@ -206,6 +212,12 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
   void scrollToTop() {
     Future.delayed(const Duration(milliseconds: 100), () {
       if (!mounted) return;
+
+      // Check if scroll controller is attached
+      if (!_scrollController.hasClients) {
+        AppLogger.warning('ScrollController not attached yet', tag: 'TrendsScreen.Scroll');
+        return;
+      }
 
       _scrollController.animateTo(
         0,
@@ -1067,47 +1079,58 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
         Row(
           children: [
             Expanded(
-              child: _buildStatCard(
-                theme,
-                'Peak Time',
-                _calculatePeakHour(entries) ?? 'N/A',
-                Icons.schedule_rounded,
-                null,
+              child: Container(
+                key: widget.peakTimeKey,
+                child: _buildStatCard(
+                  theme,
+                  'Peak Time',
+                  _calculatePeakHour(entries) ?? 'N/A',
+                  Icons.schedule_rounded,
+                  null,
+                ),
               ),
             ),
             const SizedBox(width: 16),
             Expanded(
-              child: _buildConsistencyCard(
-                theme,
-                consistencyData['score']!,
-                consistencyData['label']!,
+              child: Container(
+                key: widget.consistencyKey,
+                child: _buildConsistencyCard(
+                  theme,
+                  (consistencyData['score']! as num).toDouble(),
+                  consistencyData['label']! as String,
+                ),
               ),
             ),
           ],
         ),
         const SizedBox(height: 16),
 
-        // Third row: Best and Worst Days
+// Third row: Best and Worst Days
         Row(
-          key: widget.bestWorstKey,
           children: [
             Expanded(
-              child: _buildStatCard(
-                theme,
-                'Best Day',
-                _formatBestDayWithDate(bestEntry),
-                Icons.emoji_emotions_rounded,
-                    () => _navigateToDiary(bestEntry.timestamp),
+              child: Container(
+                key: widget.bestDayKey,
+                child: _buildStatCard(
+                  theme,
+                  'Best Day',
+                  _formatBestDayWithDate(bestEntry),
+                  Icons.emoji_emotions_rounded,
+                      () => _navigateToDiary(bestEntry.timestamp),
+                ),
               ),
             ),
             const SizedBox(width: 16),
             Expanded(
-              child: _buildStatCard(
-                theme,
-                'Toughest Day',
-                _formatToughestDayWithDate(toughestEntry),
-                Icons.mood_bad_rounded,
-                    () => _navigateToDiary(toughestEntry.timestamp),
+              child: Container(
+                key: widget.toughestDayKey,
+                child: _buildStatCard(
+                  theme,
+                  'Toughest Day',
+                  _formatToughestDayWithDate(toughestEntry),
+                  Icons.mood_bad_rounded,
+                      () => _navigateToDiary(toughestEntry.timestamp),
+                ),
               ),
             ),
           ],

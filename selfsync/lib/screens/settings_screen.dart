@@ -743,10 +743,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             width: double.infinity,
             child: OutlinedButton.icon(
               onPressed: () async {
-                // Reset tutorial and pop back - tutorial will show immediately
+                // Reset both privacy policy and tutorial
+                await widget.onboardingService.resetPrivacyPolicy();
                 await widget.onboardingService.resetTutorial();
+
                 if (mounted) {
                   Navigator.of(context).pop();
+
+                  // Show a snackbar to confirm
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text('Tutorial and privacy policy reset. You\'ll see the welcome screen when you restart.'),
+                      behavior: SnackBarBehavior.floating,
+                      duration: const Duration(seconds: 3),
+                    ),
+                  );
                 }
               },
               icon: const Icon(Icons.refresh_rounded),

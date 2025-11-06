@@ -181,7 +181,10 @@ class _MainScreenState extends State<MainScreen> {
   final GlobalKey _tutorialTrendsComparisonKey = GlobalKey();
   final GlobalKey _tutorialTrendsStreakKey = GlobalKey();
   final GlobalKey _tutorialTrendsAverageMoodKey = GlobalKey();
-  final GlobalKey _tutorialTrendsBestWorstKey = GlobalKey();
+  final GlobalKey _tutorialTrendsPeakTimeKey = GlobalKey();
+  final GlobalKey _tutorialTrendsConsistencyKey = GlobalKey();
+  final GlobalKey _tutorialTrendsBestDayKey = GlobalKey();
+  final GlobalKey _tutorialTrendsToughestDayKey = GlobalKey();
   final GlobalKey _tutorialTrendsMoodChartKey = GlobalKey();
   final GlobalKey _tutorialTrendsDistributionKey = GlobalKey();
   final GlobalKey _tutorialTrendsActivityKey = GlobalKey();
@@ -222,7 +225,10 @@ class _MainScreenState extends State<MainScreen> {
       comparisonKey: _tutorialTrendsComparisonKey,
       streakKey: _tutorialTrendsStreakKey,
       averageMoodKey: _tutorialTrendsAverageMoodKey,
-      bestWorstKey: _tutorialTrendsBestWorstKey,
+      peakTimeKey: _tutorialTrendsPeakTimeKey,
+      consistencyKey: _tutorialTrendsConsistencyKey,
+      bestDayKey: _tutorialTrendsBestDayKey,
+      toughestDayKey: _tutorialTrendsToughestDayKey,
       moodChartKey: _tutorialTrendsMoodChartKey,
       distributionKey: _tutorialTrendsDistributionKey,
       activityKey: _tutorialTrendsActivityKey,
@@ -386,7 +392,7 @@ class _MainScreenState extends State<MainScreen> {
           actionHint: 'Tap to continue',
           requiresAction: false,
         ),
-        // STEP 13 - NEW: Period Comparison (NO SCROLL, just spotlight)
+        // STEP 13 - Period Comparison (NO SCROLL, just spotlight)
         OnboardingStep(
           title: 'Period Comparison 📊',
           description: 'See how your current mood compares to previous periods. Track your progress over time!',
@@ -394,7 +400,7 @@ class _MainScreenState extends State<MainScreen> {
           actionHint: 'Tap to continue',
           requiresAction: false,
         ),
-        // STEP 14 - Streak (NO SCROLL, just spotlight)
+        // STEP 14 - Current Streak (SCROLL, then spotlight)
         OnboardingStep(
           title: 'Streak Counter 🔥',
           description: 'Track your logging consistency! Your current streak shows how many consecutive days you\'ve logged, while best streak shows your record.',
@@ -402,7 +408,7 @@ class _MainScreenState extends State<MainScreen> {
           actionHint: 'Tap to continue',
           requiresAction: false,
         ),
-        // STEP 15 - Average (NO SCROLL, just spotlight)
+        // STEP 15 - Average Mood (NO SCROLL, just spotlight)
         OnboardingStep(
           title: 'Average Mood',
           description: 'This shows your average mood rating for the selected time period. A higher number means better overall mood!',
@@ -410,15 +416,39 @@ class _MainScreenState extends State<MainScreen> {
           actionHint: 'Tap to continue',
           requiresAction: false,
         ),
-        // STEP 16 - Best/Worst (SCROLL FIRST, then spotlight after delay)
+        // STEP 16 - Peak Time (SCROLL, then spotlight)
         OnboardingStep(
-          title: 'Best & Worst Days',
-          description: 'See your highest and lowest mood days at a glance. These can help you identify patterns and triggers.',
-          targetKey: _tutorialTrendsBestWorstKey,
+          title: 'Peak Time',
+          description: 'Discover what time of day you typically feel your best. Use this to plan important activities during your peak hours!',
+          targetKey: _tutorialTrendsPeakTimeKey,
           actionHint: 'Tap to continue',
           requiresAction: false,
         ),
-        // STEP 17 - Chart (SCROLL ONLY, NO spotlight, tap anywhere to continue)
+        // STEP 17 - Consistency (NO SCROLL, just spotlight)
+        OnboardingStep(
+          title: 'Mood Consistency',
+          description: 'See how stable your moods are over time. Higher consistency means fewer mood swings.',
+          targetKey: _tutorialTrendsConsistencyKey,
+          actionHint: 'Tap to continue',
+          requiresAction: false,
+        ),
+        // STEP 18 - Best Day (SCROLL, then spotlight)
+        OnboardingStep(
+          title: 'Best Day',
+          description: 'Your highest mood day in this period. Tap to jump to that entry in your diary!',
+          targetKey: _tutorialTrendsBestDayKey,
+          actionHint: 'Tap to continue',
+          requiresAction: false,
+        ),
+        // STEP 19 - Toughest Day (NO SCROLL, just spotlight)
+        OnboardingStep(
+          title: 'Toughest Day',
+          description: 'Your lowest mood day. Understanding tough days helps identify triggers and patterns.',
+          targetKey: _tutorialTrendsToughestDayKey,
+          actionHint: 'Tap to continue',
+          requiresAction: false,
+        ),
+        // STEP 20 - Chart (SCROLL ONLY, NO spotlight)
         OnboardingStep(
           title: 'Mood Trend Chart 📈',
           description: 'This chart visualizes how your mood changes over time. Look for patterns, trends, and correlations with life events!',
@@ -426,7 +456,7 @@ class _MainScreenState extends State<MainScreen> {
           requiresAction: false,
           showOverlay: true,
         ),
-        // STEP 18 - Distribution (SCROLL ONLY, NO spotlight, tap anywhere to continue)
+        // STEP 21 - Distribution (SCROLL ONLY, NO spotlight)
         OnboardingStep(
           title: 'Mood Distribution',
           description: 'See how often you experience different mood levels. Swipe to see different visualizations!',
@@ -434,7 +464,7 @@ class _MainScreenState extends State<MainScreen> {
           requiresAction: false,
           showOverlay: true,
         ),
-        // STEP 19 - Activity (SCROLL ONLY, NO spotlight, tap anywhere to continue)
+        // STEP 22 - Activity (SCROLL ONLY, NO spotlight)
         OnboardingStep(
           title: 'Activity Heatmap',
           description: 'This calendar shows your logging activity. Darker colors mean more entries logged that day - aim for consistency!',
@@ -442,7 +472,7 @@ class _MainScreenState extends State<MainScreen> {
           requiresAction: false,
           showOverlay: true,
         ),
-        // STEP 20 - Done
+        // STEP 23 - Done
         OnboardingStep(
           title: 'All Set! 🎉',
           description: 'You\'re ready to track your moods and discover your emotional patterns! Start logging consistently to unlock deeper insights.',
@@ -459,8 +489,8 @@ class _MainScreenState extends State<MainScreen> {
           AppLogger.separator(label: 'STEP CHANGE');
           AppLogger.info('Onboarding step changed to: $stepIndex', tag: 'MainScreen');
 
-          // Don't call setOnboardingStep for steps 14-16 yet - happens after scroll/delay
-          if (stepIndex < 14 || stepIndex > 16) {
+          // Don't call setOnboardingStep for steps 14-19 yet - happens after scroll/delay
+          if (stepIndex < 14 || stepIndex > 19) {
             _moodLogKey.currentState?.setOnboardingStep(stepIndex);
           }
 
@@ -539,7 +569,7 @@ class _MainScreenState extends State<MainScreen> {
             _trendsKey.currentState?.setOnboardingStep(stepIndex);
           }
 
-          // Step 14: Scroll to streak, then spotlight
+          // Step 14: Scroll to Current Streak, then spotlight
           if (stepIndex == 14) {
             _trendsKey.currentState?.scrollToWidget(_tutorialTrendsStreakKey);
 
@@ -556,7 +586,7 @@ class _MainScreenState extends State<MainScreen> {
             return; // Exit early
           }
 
-          // Step 15: NO scroll (same Y level as streak), just spotlight with delay
+          // Step 15: Average Mood - NO scroll (same Y as streak), just spotlight with delay
           if (stepIndex == 15) {
             // Small delay for smooth transition, but no scroll
             Future.delayed(const Duration(milliseconds: 300), () {
@@ -571,9 +601,10 @@ class _MainScreenState extends State<MainScreen> {
             return; // Exit early
           }
 
-          // Step 16: Scroll to best/worst, then spotlight
+          // Step 16: Scroll to Peak Time, then spotlight
           if (stepIndex == 16) {
-            _trendsKey.currentState?.scrollToWidget(_tutorialTrendsBestWorstKey);
+            // Peak Time is in the second row, so we need to scroll
+            _trendsKey.currentState?.scrollToWidget(_tutorialTrendsPeakTimeKey);
 
             // Delay showing spotlight until scroll completes
             Future.delayed(const Duration(milliseconds: 1100), () {
@@ -588,29 +619,77 @@ class _MainScreenState extends State<MainScreen> {
             return; // Exit early
           }
 
-          // Steps 17-19: Update state immediately for these
-          if (stepIndex >= 17 && stepIndex <= 19) {
+          // Step 17: Consistency - NO scroll (same Y as peak time), just spotlight with delay
+          if (stepIndex == 17) {
+            // Small delay for smooth transition, but no scroll
+            Future.delayed(const Duration(milliseconds: 300), () {
+              if (mounted) {
+                setState(() {
+                  _onboardingStep = stepIndex;
+                });
+                _trendsKey.currentState?.setOnboardingStep(stepIndex);
+              }
+            });
+
+            return; // Exit early
+          }
+
+          // Step 18: Scroll to Best Day, then spotlight
+          if (stepIndex == 18) {
+            // Don't update state yet - this prevents spotlight from building
+            _trendsKey.currentState?.scrollToWidget(_tutorialTrendsBestDayKey);
+
+            // Delay showing spotlight until scroll completes
+            Future.delayed(const Duration(milliseconds: 1100), () {
+              if (mounted) {
+                setState(() {
+                  _onboardingStep = stepIndex;
+                });
+                _trendsKey.currentState?.setOnboardingStep(stepIndex);
+              }
+            });
+
+            return; // Exit early
+          }
+
+          // Step 19: Toughest Day - NO scroll (same Y as best day), just spotlight with delay
+          if (stepIndex == 19) {
+            // Small delay for smooth transition, but no scroll
+            Future.delayed(const Duration(milliseconds: 300), () {
+              if (mounted) {
+                setState(() {
+                  _onboardingStep = stepIndex;
+                });
+                _trendsKey.currentState?.setOnboardingStep(stepIndex);
+              }
+            });
+
+            return; // Exit early
+          }
+
+          // Steps 20-22: Update state immediately for these
+          if (stepIndex >= 20 && stepIndex <= 22) {
             setState(() {
               _onboardingStep = stepIndex;
             });
           }
 
-          // Step 17: Scroll only, NO spotlight, user taps to continue
-          if (stepIndex == 17) {
+          // Step 20: Scroll only, NO spotlight, user taps to continue
+          if (stepIndex == 20) {
             _trendsKey.currentState?.scrollToWidget(_tutorialTrendsMoodChartKey);
           }
 
-          // Step 18: Scroll only, NO spotlight, user taps to continue
-          if (stepIndex == 18) {
+          // Step 21: Scroll only, NO spotlight, user taps to continue
+          if (stepIndex == 21) {
             _trendsKey.currentState?.scrollToWidget(_tutorialTrendsDistributionKey);
           }
 
-          // Step 19: Scroll only, NO spotlight, user taps to continue
-          if (stepIndex == 19) {
+          // Step 22: Scroll only, NO spotlight, user taps to continue
+          if (stepIndex == 22) {
             _trendsKey.currentState?.scrollToWidget(_tutorialTrendsActivityKey);
           }
 
-          if (stepIndex == 20) {
+          if (stepIndex == 23) {
             setState(() {
               _onboardingStep = stepIndex;
             });

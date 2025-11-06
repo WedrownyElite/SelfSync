@@ -1906,41 +1906,43 @@ class MoodLogScreenState extends State<MoodLogScreen>
   }
 
   Widget _buildEmptyState(ThemeData theme) {
-    return Center(
-      child: FadeTransition(
-        opacity: _fadeController,
-        child: Padding(
-          padding: const EdgeInsets.all(40),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
+    return SingleChildScrollView(
+      child: Center(
+        child: FadeTransition(
+          opacity: _fadeController,
+          child: Padding(
+            padding: const EdgeInsets.all(40),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Center(
+                    child: Text('💭', style: TextStyle(fontSize: 40)),
+                  ),
                 ),
-                child: const Center(
-                  child: Text('💭', style: TextStyle(fontSize: 40)),
+                const SizedBox(height: 24),
+                Text(
+                  'No mood entries yet',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'No mood entries yet',
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
+                const SizedBox(height: 8),
+                Text(
+                  'Start tracking your mood by\nadding your first entry below',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Start tracking your mood by\nadding your first entry below',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
