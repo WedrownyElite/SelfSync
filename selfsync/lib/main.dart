@@ -235,7 +235,6 @@ class _MainScreenState extends State<MainScreen> {
       drawerController: _drawerController,
       themeService: widget.themeService,
       viewToggleKey: _tutorialCalendarViewToggleKey,
-      hamburgerKey: _hamburgerMenuKey,
     );
 
     _trendsScreen = TrendsScreen(
@@ -255,7 +254,6 @@ class _MainScreenState extends State<MainScreen> {
       moodChartKey: _tutorialTrendsMoodChartKey,
       distributionKey: _tutorialTrendsDistributionKey,
       activityKey: _tutorialTrendsActivityKey,
-      hamburgerKey: _hamburgerMenuKey,
     );
 
     widget.analyticsService.trackScreenView(_getTabName(_currentIndex));
@@ -536,15 +534,7 @@ class _MainScreenState extends State<MainScreen> {
           actionHint: 'Tap to continue',
           requiresAction: false,
         ),
-        // STEP 28 - About (NO scroll, just spotlight)
-        OnboardingStep(
-          title: 'About Self Sync 💜',
-          description: 'Your personal mood tracking companion. Thanks for using Self Sync!',
-          targetKey: _settingsAboutKey,
-          actionHint: 'Tap to continue',
-          requiresAction: false,
-        ),
-        // STEP 29 - Navigate Back & Open Drawer
+        // STEP 28 - Navigate Back & Open Drawer
         OnboardingStep(
           title: 'Check Out Help! 📚',
           description: 'Go back and open the menu again to explore the Help section with guides and tips.',
@@ -552,7 +542,7 @@ class _MainScreenState extends State<MainScreen> {
           actionHint: 'Tap the menu',
           requiresAction: true,
         ),
-        // STEP 30 - Tap Help
+        // STEP 29 - Tap Help
         OnboardingStep(
           title: 'Open Help & Support',
           description: 'Tap Help to browse guides, tips, and support options.',
@@ -560,7 +550,7 @@ class _MainScreenState extends State<MainScreen> {
           actionHint: 'Tap Help',
           requiresAction: true,
         ),
-        // STEP 31 - Help Content Preview (SCROLL only, NO spotlight)
+        // STEP 30 - Help Content Preview (SCROLL only, NO spotlight)
         OnboardingStep(
           title: 'Browse Help Resources 📖',
           description: 'Here you\'ll find detailed guides, tips & tricks, and support options. Explore at your own pace!',
@@ -568,7 +558,7 @@ class _MainScreenState extends State<MainScreen> {
           requiresAction: false,
           showOverlay: true,
         ),
-        // STEP 32 - All Done!
+        // STEP 31 - All Done!
         OnboardingStep(
           title: 'You\'re All Set! 🎉',
           description: 'You\'ve completed the tutorial! Start tracking your moods consistently to unlock deeper insights into your emotional well-being.',
@@ -826,8 +816,10 @@ class _MainScreenState extends State<MainScreen> {
           if (stepIndex == 27) {
             _settingsKey.currentState?.scrollToWidget(_settingsPrivacyKey);
 
+            // Wait for scroll to complete
             Future.delayed(const Duration(milliseconds: 1100), () {
               if (mounted) {
+                // NOW update the step to show spotlight
                 setState(() => _onboardingStep = stepIndex);
                 _settingsKey.currentState?.setOnboardingStep(stepIndex);
               }
@@ -835,36 +827,24 @@ class _MainScreenState extends State<MainScreen> {
             return;
           }
 
-          // Step 28: About (NO scroll, spotlight with delay)
+          // Step 28: Back button & open drawer
           if (stepIndex == 28) {
-            Future.delayed(const Duration(milliseconds: 300), () {
-              if (mounted) {
-                setState(() => _onboardingStep = stepIndex);
-                _settingsKey.currentState?.setOnboardingStep(stepIndex);
-              }
-            });
-            return;
-          }
-
-          // Step 29: Back button & open drawer
-          if (stepIndex == 29) {
             setState(() => _onboardingStep = stepIndex);
             _settingsKey.currentState?.endOnboarding();
             return;
           }
 
-          // Step 30: Help navigation
-          if (stepIndex == 30) {
+          // Step 29: Help navigation
+          if (stepIndex == 29) {
             setState(() => _onboardingStep = stepIndex);
             return;
           }
 
-          // Step 31: Help content scroll (no spotlight)
-          if (stepIndex == 31) {
+          // Step 30: Help content scroll (no spotlight)
+          if (stepIndex == 30) {
             setState(() => _onboardingStep = stepIndex);
             _helpKey.currentState?.scrollToWidget(_helpContentKey);
 
-            // Just scroll through help content, no spotlight
             Future.delayed(const Duration(milliseconds: 1000), () {
               if (mounted) {
                 // Content has scrolled, ready for next step
@@ -873,8 +853,8 @@ class _MainScreenState extends State<MainScreen> {
             return;
           }
 
-          // Step 32: Done!
-          if (stepIndex == 32) {
+          // Step 31: Done!
+          if (stepIndex == 31) {
             setState(() => _onboardingStep = stepIndex);
             _helpKey.currentState?.endOnboarding();
             return;

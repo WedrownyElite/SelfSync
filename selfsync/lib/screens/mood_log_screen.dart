@@ -21,6 +21,7 @@ class MoodLogScreen extends StatefulWidget {
   final GlobalKey sliderKey;
   final GlobalKey sendButtonKey;
   final GlobalKey calendarExpandKey;
+  final GlobalKey? hamburgerKey;
 
   MoodLogScreen({
     super.key,
@@ -32,6 +33,7 @@ class MoodLogScreen extends StatefulWidget {
     GlobalKey? sliderKey,
     GlobalKey? sendButtonKey,
     GlobalKey? calendarExpandKey,
+    this.hamburgerKey,
   })  : textFieldKey = textFieldKey ?? GlobalKey(),
         sliderKey = sliderKey ?? GlobalKey(),
         sendButtonKey = sendButtonKey ?? GlobalKey(),
@@ -650,8 +652,9 @@ class MoodLogScreenState extends State<MoodLogScreen>
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: Row(
               children: [
-                GestureDetector(
-                  onTap: _isOnboardingActive ? null : () {
+                IconButton(
+                  key: widget.hamburgerKey,
+                  onPressed: _isOnboardingActive ? null : () {
                     // Dismiss keyboard before opening drawer
                     FocusScope.of(context).unfocus();
                     setState(() {
@@ -659,12 +662,13 @@ class MoodLogScreenState extends State<MoodLogScreen>
                     });
                     widget.drawerController.open();
                   },
-                  child: Icon(
+                  icon: Icon(
                     Icons.menu_rounded,
                     color: _isOnboardingActive
                         ? theme.colorScheme.onSurface.withValues(alpha: 0.3)
                         : null,
                   ),
+                  tooltip: 'Open menu',
                 ),
                 const SizedBox(width: 16),
                 const Text('💜', style: TextStyle(fontSize: 24)),

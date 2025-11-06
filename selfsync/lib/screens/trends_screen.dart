@@ -345,11 +345,15 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
       ),
       child: Row(
         children: [
-          // ADD HAMBURGER BUTTON
-          HamburgerMenuButton(controller: widget.drawerController),
+          // Hamburger menu button
+          IconButton(
+            // REMOVED: key: widget.hamburgerKey,
+            onPressed: () => widget.drawerController.open(),
+            icon: const Icon(Icons.menu_rounded),
+            tooltip: 'Open menu',
+          ),
           const SizedBox(width: 12),
 
-          // EXISTING CODE BELOW
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

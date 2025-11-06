@@ -459,7 +459,12 @@ class CalendarScreenState extends State<CalendarScreen>
         children: [
           Row(
             children: [
-              HamburgerMenuButton(controller: widget.drawerController),
+              IconButton(
+                // REMOVED: key: widget.hamburgerKey,
+                onPressed: () => widget.drawerController.open(),
+                icon: const Icon(Icons.menu_rounded),
+                tooltip: 'Open menu',
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
