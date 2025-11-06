@@ -15,6 +15,8 @@ class MoodLogScreen extends StatefulWidget {
   final DateTime? initialDate;
   final SideDrawerController drawerController;
   final ThemeService themeService;
+  final bool isOnboardingActive;
+  final int onboardingStep;
 
   // Tutorial keys - accessible from outside
   final GlobalKey textFieldKey;
@@ -29,6 +31,8 @@ class MoodLogScreen extends StatefulWidget {
     this.initialDate,
     required this.drawerController,
     required this.themeService,
+    this.isOnboardingActive = false,
+    this.onboardingStep = 0,
     GlobalKey? textFieldKey,
     GlobalKey? sliderKey,
     GlobalKey? sendButtonKey,
@@ -654,7 +658,9 @@ class MoodLogScreenState extends State<MoodLogScreen>
               children: [
                 IconButton(
                   key: widget.hamburgerKey,
-                  onPressed: _isOnboardingActive ? null : () {
+                  onPressed: (_isOnboardingActive && _onboardingStep < 8)
+                      ? null
+                      : () {
                     // Dismiss keyboard before opening drawer
                     FocusScope.of(context).unfocus();
                     setState(() {
@@ -664,7 +670,7 @@ class MoodLogScreenState extends State<MoodLogScreen>
                   },
                   icon: Icon(
                     Icons.menu_rounded,
-                    color: _isOnboardingActive
+                    color: (_isOnboardingActive && _onboardingStep < 8)
                         ? theme.colorScheme.onSurface.withValues(alpha: 0.3)
                         : null,
                   ),
@@ -692,7 +698,9 @@ class MoodLogScreenState extends State<MoodLogScreen>
             child: Center(
               child: GestureDetector(
                 key: widget.calendarExpandKey,
-                onTap: (_isOnboardingActive && _onboardingStep != 5 && _onboardingStep != 7) ? null : () {
+                onTap: (_isOnboardingActive && _onboardingStep < 5)
+                    ? null
+                    : () {
                   // Dismiss keyboard before toggling calendar
                   FocusScope.of(context).unfocus();
                   setState(() {
@@ -724,7 +732,7 @@ class MoodLogScreenState extends State<MoodLogScreen>
                   duration: const Duration(milliseconds: 300),
                   child: Icon(
                     Icons.expand_more_rounded,
-                    color: (_isOnboardingActive && _onboardingStep != 5 && _onboardingStep != 7)
+                    color: (_isOnboardingActive && _onboardingStep < 5)
                         ? theme.colorScheme.primary.withValues(alpha: 0.3)
                         : theme.colorScheme.primary,
                   ),
@@ -2091,13 +2099,14 @@ class MoodLogScreenState extends State<MoodLogScreen>
                 children: [
                   Expanded(
                     child: Focus(
-                      skipTraversal: _isDialogOpen,
-                      canRequestFocus: !_isDialogOpen && !(_isOnboardingActive && (_onboardingStep == 2 || _onboardingStep == 3)),
+                      skipTraversal: _isDialogOpen || (_isOnboardingActive && _onboardingStep < 1),
+                      canRequestFocus: !_isDialogOpen && !(_isOnboardingActive && _onboardingStep < 1),
                       child: IgnorePointer(
-                        ignoring: _isOnboardingActive && (_onboardingStep == 2 || _onboardingStep == 3), // Block during slider and send steps
+                        ignoring: _isOnboardingActive && _onboardingStep < 1,
                         child: TextField(
                           key: widget.textFieldKey,
                           controller: _messageController,
+                          enabled: !_isOnboardingActive || _onboardingStep >= 1,
                           maxLines: 6,
                           minLines: 1,
                           keyboardType: TextInputType.multiline,
@@ -2158,19 +2167,28 @@ class MoodLogScreenState extends State<MoodLogScreen>
                   // Send/Save button
                   Container(
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
+                      gradient: (_isOnboardingActive && _onboardingStep == 2)
+                          ? null  // No gradient when disabled
+                          : LinearGradient(
                         colors: [
                           theme.colorScheme.primary,
                           theme.colorScheme.secondary,
                         ],
                       ),
+                      color: (_isOnboardingActive && _onboardingStep == 2)
+                          ? theme.colorScheme.onSurface.withValues(alpha: 0.3)
+                          : null,
                       shape: BoxShape.circle,
                     ),
                     child: IconButton(
                       key: widget.sendButtonKey,
-                      onPressed: _editingEntryId != null ? _saveEdit : _sendMessage,
+                      onPressed: (_isOnboardingActive && _onboardingStep == 2)
+                          ? null
+                          : (_editingEntryId != null ? _saveEdit : _sendMessage),
                       icon: Icon(_editingEntryId != null ? Icons.check_rounded : Icons.send_rounded),
-                      color: theme.colorScheme.surface,
+                      color: (_isOnboardingActive && _onboardingStep == 2)
+                          ? theme.colorScheme.onSurface.withValues(alpha: 0.5)
+                          : theme.colorScheme.surface,
                     ),
                   ),
                 ],

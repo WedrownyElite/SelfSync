@@ -175,6 +175,9 @@ class SettingsScreenState extends State<SettingsScreen> {
             Expanded(
               child: SingleChildScrollView(
                 controller: _scrollController,
+                physics: _isOnboardingActive
+                    ? const NeverScrollableScrollPhysics()
+                    : null,
                 padding: const EdgeInsets.all(20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

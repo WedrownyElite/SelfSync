@@ -788,11 +788,10 @@ class _MainScreenState extends State<MainScreen> {
             return;
           }
 
-          // Step 25: Theme Modes (SCROLL + spotlight)
+          // Step 25: Theme Modes (NO SCROLL, just spotlight with delay)
           if (stepIndex == 25) {
-            _settingsKey.currentState?.scrollToWidget(_settingsThemeModesKey);
-
-            Future.delayed(const Duration(milliseconds: 1100), () {
+            // Small delay for smooth transition, but no scroll
+            Future.delayed(const Duration(milliseconds: 300), () {
               if (mounted) {
                 setState(() => _onboardingStep = stepIndex);
                 _settingsKey.currentState?.setOnboardingStep(stepIndex);
@@ -816,10 +815,9 @@ class _MainScreenState extends State<MainScreen> {
           if (stepIndex == 27) {
             _settingsKey.currentState?.scrollToWidget(_settingsPrivacyKey);
 
-            // Wait for scroll to complete
+            // Delay showing spotlight until scroll completes
             Future.delayed(const Duration(milliseconds: 1100), () {
               if (mounted) {
-                // NOW update the step to show spotlight
                 setState(() => _onboardingStep = stepIndex);
                 _settingsKey.currentState?.setOnboardingStep(stepIndex);
               }
@@ -984,10 +982,17 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   void _onDrawerStateChanged() {
-    // Progress onboarding when drawer opens during step 23 or 29
+    // Progress onboarding when drawer opens during step 23, 28, or 29
     if (_isOnboardingActive && _drawerController.isOpen) {
       if (_onboardingStep == 23) {
         AppLogger.info('Drawer opened during step 23, progressing to step 24', tag: 'Onboarding');
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted) {
+            OnboardingController.nextStep();
+          }
+        });
+      } else if (_onboardingStep == 28) {
+        AppLogger.info('Drawer opened during step 28, progressing to step 29', tag: 'Onboarding');
         Future.delayed(const Duration(milliseconds: 300), () {
           if (mounted) {
             OnboardingController.nextStep();
@@ -1071,6 +1076,10 @@ class _MainScreenState extends State<MainScreen> {
   void _navigateToSettings() {
     AppLogger.info('Navigating to settings', tag: 'Navigation');
 
+    // Capture the current onboarding state before navigation
+    final wasOnboardingActive = _isOnboardingActive;
+    final currentOnboardingStep = _onboardingStep;
+
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => SettingsScreen(
@@ -1087,10 +1096,14 @@ class _MainScreenState extends State<MainScreen> {
         ),
       ),
     ).then((_) {
-      // Handle return from settings during onboarding
-      if (_isOnboardingActive && _onboardingStep == 29) {
-        // User returned from settings, ready for Help screen navigation
-        AppLogger.info('Returned from Settings during step 29', tag: 'Onboarding');
+      // Handle return from settings during onboarding step 28
+      if (wasOnboardingActive && currentOnboardingStep == 28) {
+        AppLogger.info('Returned from Settings during step 28, waiting for drawer open', tag: 'Onboarding');
+        // Ensure onboarding state is still active
+        setState(() {
+          _isOnboardingActive = true;
+          _onboardingStep = 28;
+        });
       }
     });
 
@@ -1128,8 +1141,8 @@ class _MainScreenState extends State<MainScreen> {
 
     _drawerController.close();
 
-    // Progress onboarding when navigating to help during step 30
-    if (_isOnboardingActive && _onboardingStep == 30) {
+    // Progress onboarding when navigating to help during step 29
+    if (_isOnboardingActive && _onboardingStep == 29) {
       Future.delayed(const Duration(milliseconds: 500), () {
         if (mounted) {
           _helpKey.currentState?.startOnboarding();
@@ -1156,6 +1169,8 @@ class _MainScreenState extends State<MainScreen> {
         sendButtonKey: _tutorialSendButtonKey,
         calendarExpandKey: _tutorialCalendarExpandKey,
         hamburgerKey: _hamburgerMenuKey,
+        isOnboardingActive: _isOnboardingActive,
+        onboardingStep: _onboardingStep,
       ),
       _trendsScreen,
     ];

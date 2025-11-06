@@ -292,7 +292,6 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
         child: Column(
           children: [
             _buildHeader(theme),
-            // Show time range selector if there's ANY data at all
             if (hasAnyData) ...[
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -306,6 +305,9 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
                   ? _buildNoDataForRangeState(theme)
                   : ListView(
                 controller: _scrollController,
+                physics: _isOnboardingActive
+                    ? const NeverScrollableScrollPhysics()
+                    : null,
                 padding: const EdgeInsets.all(16),
                 children: [
                   const SizedBox(height: 8),

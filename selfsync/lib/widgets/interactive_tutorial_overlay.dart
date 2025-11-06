@@ -110,9 +110,11 @@ class OnboardingOverlayState extends State<OnboardingOverlay>
 
       final nextStepIndex = _currentStep + 1;
 
-      // Special handling for steps 14, 16, 18 (scroll steps with spotlight after)
-      // We want to hide the overlay while scrolling
-      if (nextStepIndex == 14 || nextStepIndex == 16 || nextStepIndex == 18) {
+// Special handling for steps that scroll FIRST, then spotlight
+// Trends: 14, 16, 18
+// Settings: 27 only (25 and 26 don't scroll)
+      if (nextStepIndex == 14 || nextStepIndex == 16 || nextStepIndex == 18 ||
+          nextStepIndex == 27) {
         // Set delay flag to hide the overlay
         setState(() {
           _isStepDelayed = true;
@@ -133,8 +135,9 @@ class OnboardingOverlayState extends State<OnboardingOverlay>
             _cardAnimationController.forward();
           }
         });
-      } else if (nextStepIndex == 15 || nextStepIndex == 17 || nextStepIndex == 19) {
-        // Steps 15, 17, 19: shorter delay, no scroll (same Y level as previous)
+      } else if (nextStepIndex == 15 || nextStepIndex == 17 || nextStepIndex == 19 ||
+          nextStepIndex == 25 || nextStepIndex == 26) {
+        // Steps with short delay, no scroll (same Y level as previous)
         setState(() {
           _isStepDelayed = true;
           _currentStep = nextStepIndex;
