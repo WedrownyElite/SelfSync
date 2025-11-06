@@ -6,6 +6,7 @@ import 'screens/calendar_screen.dart';
 import 'screens/mood_log_screen.dart';
 import 'screens/trends_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/help_screen.dart';
 import 'services/mood_service.dart';
 import 'services/theme_service.dart';
 import 'services/onboarding_service.dart';
@@ -195,6 +196,24 @@ class _MainScreenState extends State<MainScreen> {
   // Tutorial keys for CalendarScreen  
   final GlobalKey _tutorialCalendarViewToggleKey = GlobalKey();
 
+  // Tutorial keys for side drawer
+  final GlobalKey _hamburgerMenuKey = GlobalKey();
+  final GlobalKey _drawerSettingsKey = GlobalKey();
+  final GlobalKey _drawerHelpKey = GlobalKey();
+
+  // Tutorial keys for Settings screen
+  final GlobalKey _settingsThemeModesKey = GlobalKey();
+  final GlobalKey _settingsColorThemesKey = GlobalKey();
+  final GlobalKey _settingsPrivacyKey = GlobalKey();
+  final GlobalKey _settingsAboutKey = GlobalKey();
+
+  // Tutorial keys for Help screen
+  final GlobalKey _helpContentKey = GlobalKey();
+
+  // Screen state keys
+  final GlobalKey<SettingsScreenState> _settingsKey = GlobalKey<SettingsScreenState>();
+  final GlobalKey<HelpScreenState> _helpKey = GlobalKey<HelpScreenState>();
+
   bool _hasGeneratedFakeData = false;
   final List<String> _fakeDataEntryIds = [];
 
@@ -206,6 +225,9 @@ class _MainScreenState extends State<MainScreen> {
     _moodService = MoodService();
     _drawerController = SideDrawerController();
 
+    // Listen to drawer state changes for onboarding progression
+    _drawerController.addListener(_onDrawerStateChanged);
+
     _calendarScreen = CalendarScreen(
       key: _calendarKey,
       moodService: _moodService,
@@ -213,6 +235,7 @@ class _MainScreenState extends State<MainScreen> {
       drawerController: _drawerController,
       themeService: widget.themeService,
       viewToggleKey: _tutorialCalendarViewToggleKey,
+      hamburgerKey: _hamburgerMenuKey,
     );
 
     _trendsScreen = TrendsScreen(
@@ -232,6 +255,7 @@ class _MainScreenState extends State<MainScreen> {
       moodChartKey: _tutorialTrendsMoodChartKey,
       distributionKey: _tutorialTrendsDistributionKey,
       activityKey: _tutorialTrendsActivityKey,
+      hamburgerKey: _hamburgerMenuKey,
     );
 
     widget.analyticsService.trackScreenView(_getTabName(_currentIndex));
@@ -472,10 +496,82 @@ class _MainScreenState extends State<MainScreen> {
           requiresAction: false,
           showOverlay: true,
         ),
-        // STEP 23 - Done
+        // STEP 23 - Open Side Drawer
         OnboardingStep(
-          title: 'All Set! 🎉',
-          description: 'You\'re ready to track your moods and discover your emotional patterns! Start logging consistently to unlock deeper insights.',
+          title: 'Let\'s Explore Settings! ⚙️',
+          description: 'Tap the menu button to open the side drawer and access Settings.',
+          targetKey: _hamburgerMenuKey,
+          actionHint: 'Tap the menu',
+          requiresAction: true,
+        ),
+        // STEP 24 - Tap Settings
+        OnboardingStep(
+          title: 'Open Settings',
+          description: 'Now tap Settings to customize your Self Sync experience!',
+          targetKey: _drawerSettingsKey,
+          actionHint: 'Tap Settings',
+          requiresAction: true,
+        ),
+        // STEP 25 - Theme Modes (SCROLL + spotlight)
+        OnboardingStep(
+          title: 'Theme Mode 🌓',
+          description: 'Choose between Light, Dark, or Auto theme mode. Auto switches based on your system settings!',
+          targetKey: _settingsThemeModesKey,
+          actionHint: 'Tap to continue',
+          requiresAction: false,
+        ),
+        // STEP 26 - Color Themes (NO scroll, just spotlight)
+        OnboardingStep(
+          title: 'Color Themes 🎨',
+          description: 'These colors affect your mood rating gradients. Pick your favorite palette!',
+          targetKey: _settingsColorThemesKey,
+          actionHint: 'Tap to continue',
+          requiresAction: false,
+        ),
+        // STEP 27 - Privacy & Analytics (SCROLL + spotlight)
+        OnboardingStep(
+          title: 'Privacy & Analytics 🔒',
+          description: 'Control your data sharing preferences. All mood data stays on your device - only anonymous usage stats are optional.',
+          targetKey: _settingsPrivacyKey,
+          actionHint: 'Tap to continue',
+          requiresAction: false,
+        ),
+        // STEP 28 - About (NO scroll, just spotlight)
+        OnboardingStep(
+          title: 'About Self Sync 💜',
+          description: 'Your personal mood tracking companion. Thanks for using Self Sync!',
+          targetKey: _settingsAboutKey,
+          actionHint: 'Tap to continue',
+          requiresAction: false,
+        ),
+        // STEP 29 - Navigate Back & Open Drawer
+        OnboardingStep(
+          title: 'Check Out Help! 📚',
+          description: 'Go back and open the menu again to explore the Help section with guides and tips.',
+          targetKey: _hamburgerMenuKey,
+          actionHint: 'Tap the menu',
+          requiresAction: true,
+        ),
+        // STEP 30 - Tap Help
+        OnboardingStep(
+          title: 'Open Help & Support',
+          description: 'Tap Help to browse guides, tips, and support options.',
+          targetKey: _drawerHelpKey,
+          actionHint: 'Tap Help',
+          requiresAction: true,
+        ),
+        // STEP 31 - Help Content Preview (SCROLL only, NO spotlight)
+        OnboardingStep(
+          title: 'Browse Help Resources 📖',
+          description: 'Here you\'ll find detailed guides, tips & tricks, and support options. Explore at your own pace!',
+          actionHint: 'Tap to continue',
+          requiresAction: false,
+          showOverlay: true,
+        ),
+        // STEP 32 - All Done!
+        OnboardingStep(
+          title: 'You\'re All Set! 🎉',
+          description: 'You\'ve completed the tutorial! Start tracking your moods consistently to unlock deeper insights into your emotional well-being.',
           actionHint: 'Tap to finish',
           requiresAction: false,
           centerCard: true,
@@ -689,11 +785,99 @@ class _MainScreenState extends State<MainScreen> {
             _trendsKey.currentState?.scrollToWidget(_tutorialTrendsActivityKey);
           }
 
+          // Step 23: Open drawer (hamburger spotlight)
           if (stepIndex == 23) {
-            setState(() {
-              _onboardingStep = stepIndex;
-            });
+            setState(() => _onboardingStep = stepIndex);
             _trendsKey.currentState?.endOnboarding();
+            return;
+          }
+
+          // Step 24: Settings navigation
+          if (stepIndex == 24) {
+            setState(() => _onboardingStep = stepIndex);
+            return;
+          }
+
+          // Step 25: Theme Modes (SCROLL + spotlight)
+          if (stepIndex == 25) {
+            _settingsKey.currentState?.scrollToWidget(_settingsThemeModesKey);
+
+            Future.delayed(const Duration(milliseconds: 1100), () {
+              if (mounted) {
+                setState(() => _onboardingStep = stepIndex);
+                _settingsKey.currentState?.setOnboardingStep(stepIndex);
+              }
+            });
+            return;
+          }
+
+          // Step 26: Color Themes (NO scroll, spotlight with delay)
+          if (stepIndex == 26) {
+            Future.delayed(const Duration(milliseconds: 300), () {
+              if (mounted) {
+                setState(() => _onboardingStep = stepIndex);
+                _settingsKey.currentState?.setOnboardingStep(stepIndex);
+              }
+            });
+            return;
+          }
+
+          // Step 27: Privacy (SCROLL + spotlight)
+          if (stepIndex == 27) {
+            _settingsKey.currentState?.scrollToWidget(_settingsPrivacyKey);
+
+            Future.delayed(const Duration(milliseconds: 1100), () {
+              if (mounted) {
+                setState(() => _onboardingStep = stepIndex);
+                _settingsKey.currentState?.setOnboardingStep(stepIndex);
+              }
+            });
+            return;
+          }
+
+          // Step 28: About (NO scroll, spotlight with delay)
+          if (stepIndex == 28) {
+            Future.delayed(const Duration(milliseconds: 300), () {
+              if (mounted) {
+                setState(() => _onboardingStep = stepIndex);
+                _settingsKey.currentState?.setOnboardingStep(stepIndex);
+              }
+            });
+            return;
+          }
+
+          // Step 29: Back button & open drawer
+          if (stepIndex == 29) {
+            setState(() => _onboardingStep = stepIndex);
+            _settingsKey.currentState?.endOnboarding();
+            return;
+          }
+
+          // Step 30: Help navigation
+          if (stepIndex == 30) {
+            setState(() => _onboardingStep = stepIndex);
+            return;
+          }
+
+          // Step 31: Help content scroll (no spotlight)
+          if (stepIndex == 31) {
+            setState(() => _onboardingStep = stepIndex);
+            _helpKey.currentState?.scrollToWidget(_helpContentKey);
+
+            // Just scroll through help content, no spotlight
+            Future.delayed(const Duration(milliseconds: 1000), () {
+              if (mounted) {
+                // Content has scrolled, ready for next step
+              }
+            });
+            return;
+          }
+
+          // Step 32: Done!
+          if (stepIndex == 32) {
+            setState(() => _onboardingStep = stepIndex);
+            _helpKey.currentState?.endOnboarding();
+            return;
           }
         },
         onComplete: () async {
@@ -701,6 +885,8 @@ class _MainScreenState extends State<MainScreen> {
           _moodLogKey.currentState?.endOnboarding();
           _calendarKey.currentState?.endOnboarding();
           _trendsKey.currentState?.endOnboarding();
+          _settingsKey.currentState?.endOnboarding();
+          _helpKey.currentState?.endOnboarding();
           _clearFakeDataAfterOnboarding();
           await widget.onboardingService.completeTutorial();
           widget.analyticsService.trackEvent('tutorial_completed');
@@ -710,6 +896,8 @@ class _MainScreenState extends State<MainScreen> {
           _moodLogKey.currentState?.endOnboarding();
           _calendarKey.currentState?.endOnboarding();
           _trendsKey.currentState?.endOnboarding();
+          _settingsKey.currentState?.endOnboarding();
+          _helpKey.currentState?.endOnboarding();
           _clearFakeDataAfterOnboarding();
           await widget.onboardingService.completeTutorial();
           widget.analyticsService.trackEvent('tutorial_skipped');
@@ -811,7 +999,29 @@ class _MainScreenState extends State<MainScreen> {
   @override
   void dispose() {
     AppLogger.lifecycle('MainScreen disposed', tag: 'MainScreen');
+    _drawerController.removeListener(_onDrawerStateChanged);
     super.dispose();
+  }
+
+  void _onDrawerStateChanged() {
+    // Progress onboarding when drawer opens during step 23 or 29
+    if (_isOnboardingActive && _drawerController.isOpen) {
+      if (_onboardingStep == 23) {
+        AppLogger.info('Drawer opened during step 23, progressing to step 24', tag: 'Onboarding');
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted) {
+            OnboardingController.nextStep();
+          }
+        });
+      } else if (_onboardingStep == 29) {
+        AppLogger.info('Drawer opened during step 29, progressing to step 30', tag: 'Onboarding');
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted) {
+            OnboardingController.nextStep();
+          }
+        });
+      }
+    }
   }
 
   String _getTabName(int index) {
@@ -884,16 +1094,69 @@ class _MainScreenState extends State<MainScreen> {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => SettingsScreen(
+          key: _settingsKey,
           themeService: widget.themeService,
           analyticsService: widget.analyticsService,
           drawerController: _drawerController,
           onboardingService: widget.onboardingService,
           moodService: _moodService,
+          themeModesKey: _settingsThemeModesKey,
+          colorThemesKey: _settingsColorThemesKey,
+          privacyKey: _settingsPrivacyKey,
+          aboutKey: _settingsAboutKey,
         ),
       ),
-    );
+    ).then((_) {
+      // Handle return from settings during onboarding
+      if (_isOnboardingActive && _onboardingStep == 29) {
+        // User returned from settings, ready for Help screen navigation
+        AppLogger.info('Returned from Settings during step 29', tag: 'Onboarding');
+      }
+    });
 
     _drawerController.close();
+
+    // Progress onboarding when navigating to settings during step 24
+    if (_isOnboardingActive && _onboardingStep == 24) {
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          _settingsKey.currentState?.startOnboarding();
+          _settingsKey.currentState?.scrollToTop();
+          OnboardingController.nextStep();
+        }
+      });
+    }
+  }
+
+  void _navigateToHelp() {
+    AppLogger.info('Navigating to help', tag: 'Navigation');
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => HelpScreen(
+          key: _helpKey,
+          drawerController: _drawerController,
+          contentKey: _helpContentKey,
+        ),
+      ),
+    ).then((_) {
+      // Handle return from help
+      if (_isOnboardingActive) {
+        AppLogger.info('Returned from Help during onboarding', tag: 'Onboarding');
+      }
+    });
+
+    _drawerController.close();
+
+    // Progress onboarding when navigating to help during step 30
+    if (_isOnboardingActive && _onboardingStep == 30) {
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          _helpKey.currentState?.startOnboarding();
+          OnboardingController.nextStep();
+        }
+      });
+    }
   }
 
   @override
@@ -912,6 +1175,7 @@ class _MainScreenState extends State<MainScreen> {
         sliderKey: _tutorialSliderKey,
         sendButtonKey: _tutorialSendButtonKey,
         calendarExpandKey: _tutorialCalendarExpandKey,
+        hamburgerKey: _hamburgerMenuKey,
       ),
       _trendsScreen,
     ];
@@ -919,9 +1183,13 @@ class _MainScreenState extends State<MainScreen> {
     return DrawerWrapper(
       controller: _drawerController,
       onSettingsTap: _navigateToSettings,
+      onHelpTap: _navigateToHelp,
       onCalendarTap: () => _onNavigationTap(0),
       onDiaryTap: () => _onNavigationTap(1),
       onTrendsTap: () => _onNavigationTap(2),
+      hamburgerKey: _hamburgerMenuKey,
+      settingsKey: _drawerSettingsKey,
+      helpKey: _drawerHelpKey,
       child: Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         body: IndexedStack(

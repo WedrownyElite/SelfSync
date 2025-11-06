@@ -1,4 +1,6 @@
-﻿import 'package:flutter/material.dart';
+﻿// ignore_for_file: unused_field
+
+import 'package:flutter/material.dart';
 import '../services/theme_service.dart';
 import '../services/analytics_service.dart';
 import '../services/mood_service.dart';

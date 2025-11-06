@@ -12,6 +12,9 @@ class SideDrawer extends StatelessWidget {
   final VoidCallback? onCalendarTap;
   final VoidCallback? onDiaryTap;
   final VoidCallback? onTrendsTap;
+  final GlobalKey? settingsKey;
+  final GlobalKey? helpKey;
+  final VoidCallback? onHelpTap;
 
   const SideDrawer({
     super.key,
@@ -20,6 +23,9 @@ class SideDrawer extends StatelessWidget {
     this.onCalendarTap,
     this.onDiaryTap,
     this.onTrendsTap,
+    this.settingsKey,
+    this.helpKey,
+    this.onHelpTap,
   });
 
   @override
@@ -176,6 +182,7 @@ class SideDrawer extends StatelessWidget {
         const Divider(height: 32, indent: 16, endIndent: 16),
 
         _buildMenuItem(
+          key: settingsKey,
           icon: Icons.settings_rounded,
           title: 'Settings',
           onTap: () {
@@ -188,17 +195,22 @@ class SideDrawer extends StatelessWidget {
           theme: theme,
         ),
         _buildMenuItem(
+          key: helpKey,
           icon: Icons.help_outline_rounded,
           title: 'Help',
           onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => HelpScreen(
-                  drawerController: SideDrawerController(),
+            if (onHelpTap != null) {
+              onHelpTap!();
+            } else {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => HelpScreen(
+                    drawerController: SideDrawerController(),
+                  ),
                 ),
-              ),
-            );
-            onClose();
+              );
+              onClose();
+            }
           },
           theme: theme,
         ),
@@ -207,12 +219,14 @@ class SideDrawer extends StatelessWidget {
   }
 
   Widget _buildMenuItem({
+    GlobalKey? key,
     required IconData icon,
     required String title,
     required VoidCallback onTap,
     required ThemeData theme,
   }) {
     return ListTile(
+      key: key,
       leading: Icon(
         icon,
         size: 24,
@@ -296,6 +310,10 @@ class DrawerWrapper extends StatefulWidget {
   final VoidCallback? onCalendarTap;
   final VoidCallback? onDiaryTap;
   final VoidCallback? onTrendsTap;
+  final VoidCallback? onHelpTap;
+  final GlobalKey? hamburgerKey;
+  final GlobalKey? settingsKey;
+  final GlobalKey? helpKey;
 
   const DrawerWrapper({
     super.key,
@@ -305,6 +323,10 @@ class DrawerWrapper extends StatefulWidget {
     this.onCalendarTap,
     this.onDiaryTap,
     this.onTrendsTap,
+    this.onHelpTap,
+    this.hamburgerKey,
+    this.settingsKey,
+    this.helpKey,
   });
 
   @override
@@ -491,6 +513,9 @@ class _DrawerWrapperState extends State<DrawerWrapper>
                 onCalendarTap: widget.onCalendarTap,
                 onDiaryTap: widget.onDiaryTap,
                 onTrendsTap: widget.onTrendsTap,
+                onHelpTap: widget.onHelpTap,
+                settingsKey: widget.settingsKey,
+                helpKey: widget.helpKey,
               ),
             ),
           ),
@@ -503,15 +528,18 @@ class _DrawerWrapperState extends State<DrawerWrapper>
 /// Hamburger menu button that opens the drawer
 class HamburgerMenuButton extends StatelessWidget {
   final SideDrawerController controller;
+  final GlobalKey? buttonKey;
 
   const HamburgerMenuButton({
     super.key,
     required this.controller,
+    this.buttonKey,
   });
 
   @override
   Widget build(BuildContext context) {
     return IconButton(
+      key: buttonKey,
       onPressed: controller.open,
       icon: const Icon(Icons.menu_rounded),
       tooltip: 'Open menu',
