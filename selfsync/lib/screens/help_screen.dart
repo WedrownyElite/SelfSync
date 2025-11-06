@@ -421,7 +421,7 @@ class HelpScreenState extends State<HelpScreen> {
               _buildQuickActionButton(
                 icon: Icons.web_rounded,
                 label: 'Website',
-                onTap: () => _launchURL('https://moodflow.oddologyinc.com'),
+                onTap: () => _launchURL('https://selfsync.oddologyinc.com'),
               ),
             ],
           ),
@@ -694,7 +694,7 @@ class HelpScreenState extends State<HelpScreen> {
         _buildBulletPoint(theme, 'Data is encrypted and secure'),
         const SizedBox(height: 16),
         TextButton.icon(
-          onPressed: () => _launchURL('https://moodflow.oddologyinc.com/#privacy'),
+          onPressed: () => _launchURL('https://selfsync.oddologyinc.com/#privacy'),
           icon: Icon(Icons.open_in_new_rounded, size: 18, color: theme.colorScheme.primary),
           label: Text(
             'Read Full Privacy Policy',
@@ -705,7 +705,7 @@ class HelpScreenState extends State<HelpScreen> {
           ),
         ),
         TextButton.icon(
-          onPressed: () => _launchURL('https://moodflow.oddologyinc.com/#terms'),
+          onPressed: () => _launchURL('https://selfsync.oddologyinc.com/#terms'),
           icon: Icon(Icons.open_in_new_rounded, size: 18, color: theme.colorScheme.primary),
           label: Text(
             'Read Terms of Service',
