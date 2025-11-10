@@ -7,6 +7,7 @@ import '../services/mood_service.dart';
 import '../services/onboarding_service.dart';
 import '../widgets/side_drawer.dart';
 import '../utils/app_logger.dart';
+import 'bug_report_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final ThemeService themeService;
@@ -58,6 +59,16 @@ class SettingsScreenState extends State<SettingsScreen> {
     widget.analyticsService.removeListener(_onAnalyticsChanged);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _openBugReportScreen(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => BugReportScreen(
+          analyticsService: widget.analyticsService,
+        ),
+      ),
+    );
   }
 
   void _onThemeChanged() {
@@ -965,6 +976,21 @@ class SettingsScreenState extends State<SettingsScreen> {
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
               height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _openBugReportScreen(context),
+              icon: const Icon(Icons.bug_report_rounded),
+              label: const Text('Report a Bug'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                side: BorderSide(
+                  color: theme.colorScheme.outline.withValues(alpha: 0.3),
+                ),
+              ),
             ),
           ),
         ],
