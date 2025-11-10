@@ -515,14 +515,19 @@ class MoodLogScreenState extends State<MoodLogScreen>
   }
 
   Color _getMoodColor(int rating) {
-    if (rating <= 3) {
-      return Colors.red;
-    } else if (rating <= 5) {
-      return Colors.orange;
-    } else if (rating <= 7) {
-      return Colors.yellow.shade700;
+    final gradient = widget.themeService.getMoodGradient();
+
+    // Map rating (1-10) to gradient colors (5 colors)
+    if (rating <= 2) {
+      return gradient[0]; // 1-2: Struggling
+    } else if (rating <= 4) {
+      return gradient[1]; // 3-4: Low
+    } else if (rating <= 6) {
+      return gradient[2]; // 5-6: Okay
+    } else if (rating <= 8) {
+      return gradient[3]; // 7-8: Good
     } else {
-      return Colors.green;
+      return gradient[4]; // 9-10: Excellent
     }
   }
 

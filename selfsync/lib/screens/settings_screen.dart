@@ -450,11 +450,12 @@ class SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
+          Column(
             children: ColorGradientOption.values.map((gradient) {
-              return _buildColorOption(theme: theme, gradient: gradient);
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _buildColorOption(theme: theme, gradient: gradient),
+              );
             }).toList(),
           ),
         ],
@@ -468,6 +469,35 @@ class SettingsScreenState extends State<SettingsScreen> {
   }) {
     final isSelected = widget.themeService.selectedGradient == gradient;
 
+    // Get theme name
+    String themeName;
+    switch (gradient) {
+      case ColorGradientOption.purpleBlue:
+        themeName = 'Purple Dream';
+        break;
+      case ColorGradientOption.sunsetOrange:
+        themeName = 'Sunset Glow';
+        break;
+      case ColorGradientOption.oceanTeal:
+        themeName = 'Ocean Breeze';
+        break;
+      case ColorGradientOption.forestGreen:
+        themeName = 'Forest Calm';
+        break;
+      case ColorGradientOption.rosePink:
+        themeName = 'Rose Garden';
+        break;
+      case ColorGradientOption.goldenAmber:
+        themeName = 'Golden Hour';
+        break;
+      case ColorGradientOption.arcticBlue:
+        themeName = 'Arctic Frost';
+        break;
+      case ColorGradientOption.lavenderMist:
+        themeName = 'Lavender Mist';
+        break;
+    }
+
     return InkWell(
       onTap: () async {
         await widget.themeService.setColorGradient(gradient);
@@ -478,36 +508,63 @@ class SettingsScreenState extends State<SettingsScreen> {
       },
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        width: 72,
-        height: 72,
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: gradient.colors.gradientColors,
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+          color: isSelected
+              ? theme.colorScheme.primaryContainer.withValues(alpha: 0.3)
+              : theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isSelected
-                ? theme.colorScheme.onSurface
-                : Colors.transparent,
-            width: 3,
+                ? theme.colorScheme.primary
+                : theme.colorScheme.outline.withValues(alpha: 0.2),
+            width: isSelected ? 2 : 1,
           ),
-          boxShadow: [
-            BoxShadow(
-              color: gradient.colors.primary.withValues(alpha: 0.3),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+        ),
+        child: Row(
+          children: [
+            // Gradient preview bar
+            Container(
+              width: 60,
+              height: 36,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: gradient.colors.gradientColors,
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                ),
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: [
+                  BoxShadow(
+                    color: gradient.colors.primary.withValues(alpha: 0.3),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
             ),
+            const SizedBox(width: 12),
+            // Theme name
+            Expanded(
+              child: Text(
+                themeName,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                  color: isSelected
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurface,
+                ),
+              ),
+            ),
+            // Checkmark for selected
+            if (isSelected)
+              Icon(
+                Icons.check_circle_rounded,
+                color: theme.colorScheme.primary,
+                size: 24,
+              ),
           ],
         ),
-        child: isSelected
-            ? Icon(
-          Icons.check_rounded,
-          color: theme.colorScheme.onPrimary,
-          size: 32,
-        )
-            : null,
       ),
     );
   }

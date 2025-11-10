@@ -7,7 +7,7 @@ class ThemeService extends ChangeNotifier {
   static const String _colorGradientKey = 'color_gradient';
 
   ThemeMode _themeMode = ThemeMode.system;
-  ColorGradientOption _selectedGradient = ColorGradientOption.purple;
+  ColorGradientOption _selectedGradient = ColorGradientOption.purpleBlue;
 
   ThemeMode get themeMode => _themeMode;
   ColorGradientOption get selectedGradient => _selectedGradient;
@@ -34,7 +34,7 @@ class ThemeService extends ChangeNotifier {
     if (gradientString != null) {
       _selectedGradient = ColorGradientOption.values.firstWhere(
             (gradient) => gradient.toString() == gradientString,
-        orElse: () => ColorGradientOption.purple,
+        orElse: () => ColorGradientOption.purpleBlue,
       );
     }
 
@@ -159,79 +159,121 @@ class ThemeService extends ChangeNotifier {
 
 /// Color gradient options for the app
 enum ColorGradientOption {
-  purple,
-  blue,
-  teal,
-  orange,
-  pink,
+  purpleBlue,
+  sunsetOrange,
+  oceanTeal,
+  forestGreen,
+  rosePink,
+  goldenAmber,
+  arcticBlue, 
+  lavenderMist,
 }
 
 extension ColorGradientExtension on ColorGradientOption {
   GradientColors get colors {
     switch (this) {
-      case ColorGradientOption.purple:
+      case ColorGradientOption.purpleBlue:
         return GradientColors(
-          name: 'Classic',
-          primary: const Color(0xFF6C63FF),
-          secondary: const Color(0xFFFF6B9D),
+          name: 'Purple Dream',
+          primary: const Color(0xFF667EEA),
+          secondary: const Color(0xFF764BA2),
           moodGradient: [
-            const Color(0xFFEF5350), // 1-2: Red (struggling)
-            const Color(0xFFFF7043), // 3-4: Red-Orange (low)
-            const Color(0xFFFDD835), // 5-6: Yellow (okay)
-            const Color(0xFF9CCC65), // 7-8: Light Green (good)
-            const Color(0xFF66BB6A), // 9-10: Green (excellent)
+            const Color(0xFF4A148C), // 1-2: Deep Purple (struggling)
+            const Color(0xFF6A1B9A), // 3-4: Purple (low)
+            const Color(0xFF9575CD), // 5-6: Lavender (okay)
+            const Color(0xFF7E57C2), // 7-8: Medium Purple (good)
+            const Color(0xFF667EEA), // 9-10: Bright Purple-Blue (excellent)
           ],
         );
-      case ColorGradientOption.blue:
+      case ColorGradientOption.sunsetOrange:
         return GradientColors(
-          name: 'Ocean Depths',
-          primary: const Color(0xFF2196F3),
-          secondary: const Color(0xFF00BCD4),
+          name: 'Sunset Glow',
+          primary: const Color(0xFFFF5E3A),
+          secondary: const Color(0xFFFF9068),
+          moodGradient: [
+            const Color(0xFF8E24AA), // 1-2: Purple (struggling)
+            const Color(0xFFD81B60), // 3-4: Pink (low)
+            const Color(0xFFFF6F00), // 5-6: Deep Orange (okay)
+            const Color(0xFFFFA726), // 7-8: Orange (good)
+            const Color(0xFFFFD54F), // 9-10: Yellow (excellent)
+          ],
+        );
+      case ColorGradientOption.oceanTeal:
+        return GradientColors(
+          name: 'Ocean Breeze',
+          primary: const Color(0xFF00BCD4),
+          secondary: const Color(0xFF26C6DA),
           moodGradient: [
             const Color(0xFF1565C0), // 1-2: Deep Blue (struggling)
             const Color(0xFF1976D2), // 3-4: Blue (low)
             const Color(0xFF42A5F5), // 5-6: Light Blue (okay)
-            const Color(0xFF4DD0E1), // 7-8: Cyan (good)
-            const Color(0xFF80DEEA), // 9-10: Light Cyan (excellent)
+            const Color(0xFF26C6DA), // 7-8: Cyan (good)
+            const Color(0xFF4DD0E1), // 9-10: Light Cyan (excellent)
           ],
         );
-      case ColorGradientOption.teal:
+      case ColorGradientOption.forestGreen:
         return GradientColors(
-          name: 'Forest Zen',
-          primary: const Color(0xFF009688),
-          secondary: const Color(0xFF4CAF50),
+          name: 'Forest Calm',
+          primary: const Color(0xFF43A047),
+          secondary: const Color(0xFF66BB6A),
           moodGradient: [
             const Color(0xFF5D4037), // 1-2: Brown (struggling)
             const Color(0xFF795548), // 3-4: Light Brown (low)
-            const Color(0xFFAED581), // 5-6: Light Green (okay)
-            const Color(0xFF4CAF50), // 7-8: Green (good)
-            const Color(0xFF00897B), // 9-10: Teal (excellent)
+            const Color(0xFF9CCC65), // 5-6: Light Green (okay)
+            const Color(0xFF66BB6A), // 7-8: Green (good)
+            const Color(0xFF43A047), // 9-10: Deep Green (excellent)
           ],
         );
-      case ColorGradientOption.orange:
+      case ColorGradientOption.rosePink:
         return GradientColors(
-          name: 'Sunrise',
-          primary: const Color(0xFFFF5722),
-          secondary: const Color(0xFFFFB300),
-          moodGradient: [
-            const Color(0xFF8E24AA), // 1-2: Purple (struggling)
-            const Color(0xFFD81B60), // 3-4: Pink (low)
-            const Color(0xFFFF6F00), // 5-6: Orange (okay)
-            const Color(0xFFFFA726), // 7-8: Light Orange (good)
-            const Color(0xFFFFD54F), // 9-10: Yellow (excellent)
-          ],
-        );
-      case ColorGradientOption.pink:
-        return GradientColors(
-          name: 'Cherry Blossom',
-          primary: const Color(0xFFE91E63),
-          secondary: const Color(0xFFAB47BC),
+          name: 'Rose Garden',
+          primary: const Color(0xFFEC407A),
+          secondary: const Color(0xFFF48FB1),
           moodGradient: [
             const Color(0xFF6A1B9A), // 1-2: Deep Purple (struggling)
             const Color(0xFF8E24AA), // 3-4: Purple (low)
             const Color(0xFFAB47BC), // 5-6: Light Purple (okay)
             const Color(0xFFEC407A), // 7-8: Pink (good)
             const Color(0xFFF48FB1), // 9-10: Light Pink (excellent)
+          ],
+        );
+      case ColorGradientOption.goldenAmber:
+        return GradientColors(
+          name: 'Golden Hour',
+          primary: const Color(0xFFFF8F00),
+          secondary: const Color(0xFFFFB300),
+          moodGradient: [
+            const Color(0xFFE64A19), // 1-2: Deep Orange-Red (struggling)
+            const Color(0xFFFF6F00), // 3-4: Orange (low)
+            const Color(0xFFFFA726), // 5-6: Light Orange (okay)
+            const Color(0xFFFFB300), // 7-8: Amber (good)
+            const Color(0xFFFFD54F), // 9-10: Yellow (excellent)
+          ],
+        );
+      case ColorGradientOption.arcticBlue:
+        return GradientColors(
+          name: 'Arctic Frost',
+          primary: const Color(0xFF4FC3F7),
+          secondary: const Color(0xFF81D4FA),
+          moodGradient: [
+            const Color(0xFF0D47A1), // 1-2: Navy (struggling)
+            const Color(0xFF1565C0), // 3-4: Blue (low)
+            const Color(0xFF1976D2), // 5-6: Medium Blue (okay)
+            const Color(0xFF42A5F5), // 7-8: Light Blue (good)
+            const Color(0xFF81D4FA), // 9-10: Sky Blue (excellent)
+          ],
+        );
+      case ColorGradientOption.lavenderMist:
+        return GradientColors(
+          name: 'Lavender Mist',
+          primary: const Color(0xFF9575CD),
+          secondary: const Color(0xFFB39DDB),
+          moodGradient: [
+            const Color(0xFF4A148C), // 1-2: Deep Purple (struggling)
+            const Color(0xFF6A1B9A), // 3-4: Purple (low)
+            const Color(0xFF8E24AA), // 5-6: Medium Purple (okay)
+            const Color(0xFF9575CD), // 7-8: Lavender (good)
+            const Color(0xFFB39DDB), // 9-10: Light Lavender (excellent)
           ],
         );
     }

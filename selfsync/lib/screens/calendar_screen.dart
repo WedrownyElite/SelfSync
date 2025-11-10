@@ -443,6 +443,23 @@ class CalendarScreenState extends State<CalendarScreen>
   Widget _buildHeader(BuildContext context, ThemeData theme) {
     final isCurrentYear = _selectedYear == currentYear;
 
+    // Get available years from mood data
+    final availableYears = widget.moodService.entries.isEmpty
+        ? [currentYear]
+        : widget.moodService.entries
+        .map((e) => e.timestamp.year)
+        .toSet()
+        .toList()
+      ..sort();
+
+    if (availableYears.isEmpty) {
+      availableYears.add(currentYear);
+    }
+
+    // Check if previous/next years have data
+    final hasPreviousYear = availableYears.contains(_selectedYear - 1);
+    final hasNextYear = availableYears.contains(_selectedYear + 1);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: BoxDecoration(
@@ -460,7 +477,6 @@ class CalendarScreenState extends State<CalendarScreen>
           Row(
             children: [
               IconButton(
-                // REMOVED: key: widget.hamburgerKey,
                 onPressed: () => widget.drawerController.open(),
                 icon: const Icon(Icons.menu_rounded),
                 tooltip: 'Open menu',
@@ -493,14 +509,18 @@ class CalendarScreenState extends State<CalendarScreen>
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               IconButton(
-                onPressed: () => _changeYear(-1),
+                onPressed: hasPreviousYear ? () => _changeYear(-1) : null,
                 icon: Icon(
                   Icons.chevron_left_rounded,
-                  color: theme.colorScheme.primary,
+                  color: hasPreviousYear
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurface.withValues(alpha: 0.3),
                 ),
-                tooltip: 'Previous year',
+                tooltip: hasPreviousYear ? 'Previous year' : 'No data for previous year',
                 style: IconButton.styleFrom(
-                  backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
+                  backgroundColor: hasPreviousYear
+                      ? theme.colorScheme.primary.withValues(alpha: 0.1)
+                      : theme.colorScheme.onSurface.withValues(alpha: 0.05),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -577,14 +597,18 @@ class CalendarScreenState extends State<CalendarScreen>
               ),
               const SizedBox(width: 24),
               IconButton(
-                onPressed: () => _changeYear(1),
+                onPressed: hasNextYear ? () => _changeYear(1) : null,
                 icon: Icon(
                   Icons.chevron_right_rounded,
-                  color: theme.colorScheme.primary,
+                  color: hasNextYear
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurface.withValues(alpha: 0.3),
                 ),
-                tooltip: 'Next year',
+                tooltip: hasNextYear ? 'Next year' : 'No data for next year',
                 style: IconButton.styleFrom(
-                  backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
+                  backgroundColor: hasNextYear
+                      ? theme.colorScheme.primary.withValues(alpha: 0.1)
+                      : theme.colorScheme.onSurface.withValues(alpha: 0.05),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
