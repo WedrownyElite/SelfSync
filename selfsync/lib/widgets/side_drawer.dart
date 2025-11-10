@@ -13,6 +13,7 @@ class SideDrawer extends StatelessWidget {
   final VoidCallback? onCalendarTap;
   final VoidCallback? onDiaryTap;
   final VoidCallback? onTrendsTap;
+  final VoidCallback? onBugReportTap;
   final GlobalKey? settingsKey;
   final GlobalKey? helpKey;
   final VoidCallback? onHelpTap;
@@ -24,6 +25,7 @@ class SideDrawer extends StatelessWidget {
     this.onCalendarTap,
     this.onDiaryTap,
     this.onTrendsTap,
+    this.onBugReportTap,
     this.settingsKey,
     this.helpKey,
     this.onHelpTap,
@@ -251,9 +253,34 @@ class SideDrawer extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const Divider(height: 1),
+          const SizedBox(height: 12),
+
+          // Bug Report Button
+          OutlinedButton.icon(
+            onPressed: () {
+              if (onBugReportTap != null) {
+                onBugReportTap!();
+              } else {
+                onClose();
+              }
+            },
+            icon: const Icon(Icons.bug_report_rounded, size: 18),
+            label: const Text('Report a Bug'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: theme.colorScheme.primary,
+              side: BorderSide(
+                color: theme.colorScheme.primary.withValues(alpha: 0.5),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+
           const SizedBox(height: 16),
           Text(
             'Version ${AppConstants.appVersion}',
@@ -311,6 +338,7 @@ class DrawerWrapper extends StatefulWidget {
   final VoidCallback? onCalendarTap;
   final VoidCallback? onDiaryTap;
   final VoidCallback? onTrendsTap;
+  final VoidCallback? onBugReportTap;
   final VoidCallback? onHelpTap;
   final GlobalKey? hamburgerKey;
   final GlobalKey? settingsKey;
@@ -324,6 +352,7 @@ class DrawerWrapper extends StatefulWidget {
     this.onCalendarTap,
     this.onDiaryTap,
     this.onTrendsTap,
+    this.onBugReportTap,
     this.onHelpTap,
     this.hamburgerKey,
     this.settingsKey,
@@ -514,6 +543,7 @@ class _DrawerWrapperState extends State<DrawerWrapper>
                 onCalendarTap: widget.onCalendarTap,
                 onDiaryTap: widget.onDiaryTap,
                 onTrendsTap: widget.onTrendsTap,
+                onBugReportTap: widget.onBugReportTap,
                 onHelpTap: widget.onHelpTap,
                 settingsKey: widget.settingsKey,
                 helpKey: widget.helpKey,

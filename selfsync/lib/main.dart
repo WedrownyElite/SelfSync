@@ -8,6 +8,7 @@ import 'screens/mood_log_screen.dart';
 import 'screens/trends_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/help_screen.dart';
+import 'screens/bug_report_screen.dart';
 import 'services/mood_service.dart';
 import 'services/theme_service.dart';
 import 'services/onboarding_service.dart';
@@ -1124,6 +1125,20 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
+  void _navigateToBugReport() {
+    AppLogger.info('Navigating to bug report', tag: 'Navigation');
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => BugReportScreen(
+          analyticsService: widget.analyticsService,
+        ),
+      ),
+    );
+
+    _drawerController.close();
+  }
+
   void _navigateToHelp() {
     AppLogger.info('Navigating to help', tag: 'Navigation');
 
@@ -1182,6 +1197,7 @@ class _MainScreenState extends State<MainScreen> {
       controller: _drawerController,
       onSettingsTap: _navigateToSettings,
       onHelpTap: _navigateToHelp,
+      onBugReportTap: _navigateToBugReport,
       onCalendarTap: () => _onNavigationTap(0),
       onDiaryTap: () => _onNavigationTap(1),
       onTrendsTap: () => _onNavigationTap(2),
