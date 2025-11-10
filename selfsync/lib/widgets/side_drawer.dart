@@ -255,7 +255,7 @@ class SideDrawer extends StatelessWidget {
           const Divider(height: 1),
           const SizedBox(height: 16),
           Text(
-            'Version 1.1.0 - Alpha',
+            'Version 1.3.0 - Alpha',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
             ),
