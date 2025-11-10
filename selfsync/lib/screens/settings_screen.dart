@@ -7,7 +7,9 @@ import '../services/mood_service.dart';
 import '../services/onboarding_service.dart';
 import '../widgets/side_drawer.dart';
 import '../utils/app_logger.dart';
+import '../constants/app_constants.dart';
 import 'bug_report_screen.dart';
+
 
 class SettingsScreen extends StatefulWidget {
   final ThemeService themeService;
@@ -965,7 +967,7 @@ class SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Version 1.3.0-alpha',
+            'Version ${AppConstants.appVersion}',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
             ),

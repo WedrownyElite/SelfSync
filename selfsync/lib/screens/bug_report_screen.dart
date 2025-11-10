@@ -2,8 +2,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:shared_preferences/shared_preferences.dart';
-import '../services/email_service.dart';
+import '../services/bug_report_service.dart';
 import '../services/analytics_service.dart';
+import '../constants/app_constants.dart';
 import '../utils/app_logger.dart';
 
 class BugReportScreen extends StatefulWidget {
@@ -91,6 +92,13 @@ class _BugReportScreenState extends State<BugReportScreen> {
     }
   }
 
+  bool _isValidEmail(String email) {
+    final emailRegex = RegExp(
+      r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+    );
+    return emailRegex.hasMatch(email);
+  }
+
   Future<void> _submitBugReport() async {
     if (!_formKey.currentState!.validate()) {
       return;
@@ -104,15 +112,15 @@ class _BugReportScreenState extends State<BugReportScreen> {
       // Save email if remember is checked
       await _saveEmail();
 
-      final success = await EmailService.sendBugReport(
-        userEmail: _emailController.text.trim(),
+      final success = await BugReportService.submitBugReport(
+        email: _emailController.text.trim(),
         title: _titleController.text.trim(),
         description: _descriptionController.text.trim(),
         stepsToReproduce: _stepsController.text.trim().isEmpty
-            ? 'Not provided'
+            ? null
             : _stepsController.text.trim(),
         deviceInfo: _getDeviceInfo(),
-        appVersion: '1.0.0',
+        appVersion: AppConstants.appVersion,
       );
 
       if (!mounted) return;
@@ -312,7 +320,7 @@ class _BugReportScreenState extends State<BugReportScreen> {
             if (value == null || value.trim().isEmpty) {
               return 'Please enter your email';
             }
-            if (!EmailService.isValidEmail(value.trim())) {
+            if (!_isValidEmail(value.trim())) {
               return 'Please enter a valid email';
             }
             return null;
