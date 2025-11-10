@@ -1,17 +1,14 @@
 ﻿import 'dart:convert';
-import 'package:flutter/foundation.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import '../utils/app_logger.dart';
 
 class EmailService {
-  // Your production backend URL
   static const String _apiEndpoint = 'https://selfsyncapi.oddologyinc.com/api/bug-report';
 
-  // Your API key from the backend .env file
-  static const String _apiKey = '55c5fu25TXdlRczAkqbYKKb1U3ttRAIONyhPwEgIoWc=';
+  // Load from environment variable
+  static String get _apiKey => dotenv.env['SELFSYNC_API_KEY'] ?? '';
 
-  /// Send a bug report email
-  /// Returns true if successful, false otherwise
   static Future<bool> sendBugReport({
     required String userEmail,
     required String title,
