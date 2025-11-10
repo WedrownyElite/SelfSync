@@ -246,6 +246,7 @@ class _MainScreenState extends State<MainScreen> {
       moodService: _moodService,
       drawerController: _drawerController,
       themeService: widget.themeService,
+      onNavigateToTab: _navigateToDate,
       datePresetsKey: _tutorialTrendsDatePresetsKey,
       insightsKey: _tutorialTrendsInsightsKey,
       comparisonKey: _tutorialTrendsComparisonKey,
