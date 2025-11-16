@@ -44,3 +44,27 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Firebase config files - NEVER COMMIT THESE
+android/app/src/dev/google-services.json
+android/app/src/prod/google-services.json
+android/app/src/main/google-services.json
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist
+ios/Runner/GoogleService-Info-Dev.plist
+ios/Runner/GoogleService-Info-Prod.plist
+ios/firebase_app_id_file.json
+
+# Environment files - NEVER COMMIT THESE
+.env
+.env.dev
+.env.prod
+.env.local
+.env.*.local
+
+# Generated Firebase options
+lib/firebase_options.dart
+
+# SSH credentials
+SSH.txt
+**/SSH.txt
