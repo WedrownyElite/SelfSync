@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "671003049810",
+    "project_id": "selfsync-dev",
+    "storage_bucket": "selfsync-dev.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:671003049810:android:09f27423389ba6e66bc48b",
+        "android_client_info": {
+          "package_name": "com.oddologyinc.selfsync.dev"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "671003049810-edjittfn5506qbid21jjs53he0vk10fi.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.oddologyinc.selfsync.dev",
+            "certificate_hash": "46312002e6588e4e284f24b8648512275e219cd6"
+          }
+        },
+        {
+          "client_id": "671003049810-nr8nlk1hftc0u6h64hm2n1p8g7i37dhs.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB7kS4MfWAnMtgBuV9xCfr_kaL5N2OSkpU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "671003049810-nr8nlk1hftc0u6h64hm2n1p8g7i37dhs.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
