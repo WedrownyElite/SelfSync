@@ -59,12 +59,14 @@ class SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     widget.themeService.addListener(_onThemeChanged);
     widget.analyticsService.addListener(_onAnalyticsChanged);
+    widget.cloudBackupService.addListener(_onCloudBackupChanged);
   }
 
   @override
   void dispose() {
     widget.themeService.removeListener(_onThemeChanged);
     widget.analyticsService.removeListener(_onAnalyticsChanged);
+    widget.cloudBackupService.removeListener(_onCloudBackupChanged);
     _scrollController.dispose();
     super.dispose();
   }
@@ -84,6 +86,10 @@ class SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _onAnalyticsChanged() {
+    setState(() {});
+  }
+
+  void _onCloudBackupChanged() {
     setState(() {});
   }
 

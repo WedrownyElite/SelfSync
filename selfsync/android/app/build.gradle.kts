@@ -32,22 +32,6 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
-    
-    // ADD THIS SECTION - Product Flavors
-    flavorDimensions += "environment"
-    
-    productFlavors {
-        create("dev") {
-            dimension = "environment"
-            applicationIdSuffix = ".dev"
-            versionNameSuffix = "-dev"
-            resValue("string", "app_name", "Self Sync Dev")
-        }
-        create("prod") {
-            dimension = "environment"
-            resValue("string", "app_name", "Self Sync")
-        }
-    }
 }
 
 dependencies {
