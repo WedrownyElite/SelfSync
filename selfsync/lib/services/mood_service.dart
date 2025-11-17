@@ -12,6 +12,7 @@ class MoodService extends ChangeNotifier {
   bool _isLoaded = false;
 
   List<MoodEntry> get entries => List.unmodifiable(_entries);
+  Function(List<MoodEntry>)? onEntriesChanged;
 
   /// Get entries excluding test data (for Mood Diary during onboarding)
   List<MoodEntry> get entriesExcludingTestData =>
@@ -229,7 +230,19 @@ class MoodService extends ChangeNotifier {
     );
     _entries.insert(0, entry);
     notifyListeners();
+    onEntriesChanged?.call(getAllEntries());
     _saveEntries();
+  }
+
+  void importEntry(MoodEntry entry) {
+    _entries.add(entry);
+    _saveEntries();
+    notifyListeners();
+  }
+
+  /// Get all entries (including test data)
+  List<MoodEntry> getAllEntries() {
+    return List.unmodifiable(_entries);
   }
 
   /// Clear all entries (used for onboarding cleanup)

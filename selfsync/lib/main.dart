@@ -9,7 +9,10 @@ import 'screens/trends_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/help_screen.dart';
 import 'screens/bug_report_screen.dart';
+import 'screens/auth_screen.dart';
+import 'services/auth_service.dart';
 import 'services/mood_service.dart';
+import 'services/cloud_backup_service.dart';
 import 'services/theme_service.dart';
 import 'services/onboarding_service.dart';
 import 'services/analytics_service.dart';
@@ -59,6 +62,8 @@ class SelfSyncApp extends StatefulWidget {
 class _SelfSyncAppState extends State<SelfSyncApp> {
   late final ThemeService _themeService;
   late final OnboardingService _onboardingService;
+  late final AuthService _authService;
+  late final CloudBackupService _cloudBackupService;
   bool _isInitialized = false;
 
   @override
@@ -66,12 +71,19 @@ class _SelfSyncAppState extends State<SelfSyncApp> {
     super.initState();
     _themeService = ThemeService();
     _onboardingService = OnboardingService();
+    _authService = AuthService();
+    _cloudBackupService = CloudBackupService();
 
     _themeService.addListener(_onThemeChanged);
     _onboardingService.addListener(_onOnboardingChanged);
+    _authService.addListener(_onAuthChanged);
 
     _trackStartupTime();
     _waitForInitialization();
+  }
+
+  void _onAuthChanged() {
+    setState(() {});
   }
 
   void _trackStartupTime() {
@@ -93,6 +105,7 @@ class _SelfSyncAppState extends State<SelfSyncApp> {
   void dispose() {
     _themeService.removeListener(_onThemeChanged);
     _onboardingService.removeListener(_onOnboardingChanged);
+    _authService.removeListener(_onAuthChanged);
     super.dispose();
   }
 
@@ -130,11 +143,15 @@ class _SelfSyncAppState extends State<SelfSyncApp> {
       theme: _themeService.getLightTheme(),
       darkTheme: _themeService.getDarkTheme(),
       themeMode: _themeService.themeMode,
-      home: MainScreen(
+      home: _authService.isSignedIn
+          ? MainScreen(
         themeService: _themeService,
         analyticsService: widget.analyticsService,
         onboardingService: _onboardingService,
-      ),
+        authService: _authService,
+        cloudBackupService: _cloudBackupService,
+      )
+          : AuthScreen(authService: _authService),
     );
   }
 }
@@ -143,12 +160,16 @@ class MainScreen extends StatefulWidget {
   final ThemeService themeService;
   final AnalyticsService analyticsService;
   final OnboardingService onboardingService;
+  final AuthService authService;
+  final CloudBackupService cloudBackupService;
 
   const MainScreen({
     super.key,
     required this.themeService,
     required this.analyticsService,
     required this.onboardingService,
+    required this.authService,
+    required this.cloudBackupService,
   });
 
   @override
@@ -229,6 +250,10 @@ class _MainScreenState extends State<MainScreen> {
     _moodService = MoodService();
     _drawerController = SideDrawerController();
 
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkForCloudBackupOnFirstLaunch();
+    });
+
     // Listen to drawer state changes for onboarding progression
     _drawerController.addListener(_onDrawerStateChanged);
 
@@ -276,6 +301,165 @@ class _MainScreenState extends State<MainScreen> {
         });
       });
     }
+  }
+
+  Future<void> _checkForCloudBackupOnFirstLaunch() async {
+    // Wait for privacy policy and tutorial to complete first
+    if (!widget.onboardingService.privacyAccepted || widget.onboardingService.shouldShowTutorial) {
+      return;
+    }
+
+    final hasBackup = await widget.cloudBackupService.hasCloudBackup();
+    final entries = _moodService.getAllEntries();
+
+    if (hasBackup && entries.isEmpty && mounted) {
+      // User has cloud backup but no local data - offer to restore
+      _showRestoreBackupDialog();
+    } else if (!hasBackup && entries.isNotEmpty && mounted) {
+      // User has local data but no cloud backup - offer to enable backups
+      _showEnableBackupDialog(entries.length);
+    }
+  }
+
+  void _showRestoreBackupDialog() async {
+    final metadata = await widget.cloudBackupService.getLatestBackupMetadata();
+
+    if (!mounted || metadata == null) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Cloud Backup Found'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('We found a cloud backup of your mood data:'),
+            const SizedBox(height: 12),
+            Text('• ${metadata.entryCount} entries'),
+            Text('• Last backup: ${_formatDate(metadata.createdAt)}'),
+            Text('• Size: ${metadata.formattedSize}'),
+            const SizedBox(height: 12),
+            const Text('Would you like to restore this data?'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Not Now'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _performRestore();
+            },
+            child: const Text('Restore'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEnableBackupDialog(int entryCount) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Enable Cloud Backups?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('You have $entryCount mood ${entryCount == 1 ? "entry" : "entries"} saved locally.'),
+            const SizedBox(height: 12),
+            const Text('Would you like to enable automatic cloud backups to keep your data safe?'),
+            const SizedBox(height: 12),
+            const Text(
+              'Your data will be encrypted and stored securely in your personal cloud storage.',
+              style: TextStyle(fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Not Now'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _enableAutoBackup();
+            },
+            child: const Text('Enable'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _performRestore() async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Restoring from cloud...'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+
+    final entries = await widget.cloudBackupService.restoreFromCloud();
+
+    if (entries != null && mounted) {
+      // Import restored entries into MoodService
+      for (final entry in entries) {
+        _moodService.importEntry(entry);
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Successfully restored ${entries.length} entries'),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      // Ask if they want to enable auto backup
+      await widget.cloudBackupService.setAutoBackupEnabled(true);
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Failed to restore backup'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _enableAutoBackup() async {
+    await widget.cloudBackupService.setAutoBackupEnabled(true);
+
+    // Perform initial backup
+    final entries = _moodService.getAllEntries();
+    final success = await widget.cloudBackupService.backupToCloud(entries);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(success
+              ? 'Auto backup enabled and initial backup completed'
+              : 'Auto backup enabled'),
+          backgroundColor: success ? Colors.green : null,
+        ),
+      );
+    }
+  }
+
+  String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    final diff = now.difference(date);
+
+    if (diff.inDays == 0) return 'Today';
+    if (diff.inDays == 1) return 'Yesterday';
+    if (diff.inDays < 7) return '${diff.inDays} days ago';
+
+    return '${date.day}/${date.month}/${date.year}';
   }
 
   void _showPrivacyPolicy() {
@@ -1094,6 +1278,8 @@ class _MainScreenState extends State<MainScreen> {
           drawerController: _drawerController,
           onboardingService: widget.onboardingService,
           moodService: _moodService,
+          authService: widget.authService,
+          cloudBackupService: widget.cloudBackupService,
           themeModesKey: _settingsThemeModesKey,
           colorThemesKey: _settingsColorThemesKey,
           privacyKey: _settingsPrivacyKey,
