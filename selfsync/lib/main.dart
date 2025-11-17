@@ -1,6 +1,8 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 import 'utils/app_logger.dart';
 import 'utils/performance_test_helper.dart';
 import 'screens/calendar_screen.dart';
@@ -24,8 +26,14 @@ import 'widgets/privacy_policy_dialog.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Initialize Firebase
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  // Load environment variables
   await dotenv.load(fileName: ".env");
-  
+
   final startTime = DateTime.now();
   AppLogger.separator(label: 'SELF SYNC APP STARTUP');
   AppLogger.lifecycle('App starting...', tag: 'Main');

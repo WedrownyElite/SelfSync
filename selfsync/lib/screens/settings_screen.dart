@@ -1675,7 +1675,7 @@ class SettingsScreenState extends State<SettingsScreen> {
           );
         }
       } else {
-        // Some other error occurred
+        // Some other error occurredaw
         ScaffoldMessenger.of(scaffoldContext).showSnackBar(
           SnackBar(
             content: const Text('Failed to delete account. Please try again or contact support.'),
