@@ -22,6 +22,7 @@ import 'widgets/modern_nav_bar.dart';
 import 'widgets/side_drawer.dart';
 import 'widgets/interactive_tutorial_overlay.dart';
 import 'widgets/privacy_policy_dialog.dart';
+import 'widgets/loading_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -132,15 +133,12 @@ class _SelfSyncAppState extends State<SelfSyncApp> {
     if (!_isInitialized) {
       return MaterialApp(
         debugShowCheckedModeBanner: false,
-        home: Scaffold(
-          backgroundColor: Colors.white,
-          body: Center(
-            child: CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(
-                _themeService.selectedGradient.colors.primary,
-              ),
-            ),
-          ),
+        theme: _themeService.getLightTheme(),
+        darkTheme: _themeService.getDarkTheme(),
+        themeMode: _themeService.themeMode,
+        home: LoadingScreen(
+          message: 'Initializing Self Sync...',
+          primaryColor: _themeService.selectedGradient.colors.primary,
         ),
       );
     }
@@ -249,6 +247,9 @@ class _MainScreenState extends State<MainScreen> {
 
   bool _hasGeneratedFakeData = false;
   final List<String> _fakeDataEntryIds = [];
+
+  bool _isLoadingData = true;
+  bool _shouldShowPrivacyPolicy = false;
 
   @override
   void initState() {

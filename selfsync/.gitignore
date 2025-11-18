@@ -12,6 +12,7 @@
 .swiftpm/
 migrate_working_dir/
 SSH.txt
+android/gradle.properties
 
 # IntelliJ related
 *.iml
