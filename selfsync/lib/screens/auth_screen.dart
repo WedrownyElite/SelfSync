@@ -237,10 +237,22 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                                 ),
                               ],
                             ),
-                            child: Icon(
-                              Icons.psychology_rounded,
-                              size: 50,
-                              color: theme.colorScheme.primary,
+                            child: ClipOval(
+                              child: Image.asset(
+                                'assets/logo.png',
+                                width: 100,
+                                height: 100,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) {
+
+                                  // Fallback to icon if image fails to load
+                                  return Icon(
+                                    Icons.psychology_rounded,
+                                    size: 50,
+                                    color: theme.colorScheme.primary,
+                                  );
+                                },
+                              ),
                             ),
                           ),
                           const SizedBox(height: 32),
@@ -256,7 +268,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                           ),
                           const SizedBox(height: 8),
 
-                          // Tagline
+                        // Tagline
                           Text(
                             'Track your mood, sync your mind',
                             style: theme.textTheme.titleMedium?.copyWith(
@@ -383,7 +395,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                                   if (!_isSignIn) ...[
                                     TextFormField(
                                       controller: _nameController,
-                                      style: const TextStyle(color: Colors.black), // CHANGED
+                                      style: const TextStyle(color: Colors.black),
                                       decoration: InputDecoration(
                                         hintText: 'Name (optional)',
                                         filled: true,
@@ -400,7 +412,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                                   TextFormField(
                                     controller: _emailController,
                                     keyboardType: TextInputType.emailAddress,
-                                    style: const TextStyle(color: Colors.black), // CHANGED
+                                    style: const TextStyle(color: Colors.black),
                                     decoration: InputDecoration(
                                       hintText: 'Email',
                                       filled: true,
@@ -425,7 +437,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                                   TextFormField(
                                     controller: _passwordController,
                                     obscureText: _obscurePassword,
-                                    style: const TextStyle(color: Colors.black), // CHANGED
+                                    style: const TextStyle(color: Colors.black),
                                     decoration: InputDecoration(
                                       hintText: 'Password',
                                       filled: true,
@@ -461,7 +473,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                                     TextFormField(
                                       controller: _confirmPasswordController,
                                       obscureText: _obscureConfirmPassword,
-                                      style: const TextStyle(color: Colors.black), // CHANGED
+                                      style: const TextStyle(color: Colors.black),
                                       decoration: InputDecoration(
                                         hintText: 'Confirm Password',
                                         filled: true,
