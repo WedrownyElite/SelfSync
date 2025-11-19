@@ -12,6 +12,9 @@ class CloudBackupService extends ChangeNotifier {
 
   static const String _autoBackupKey = 'auto_backup_enabled';
   static const String _lastBackupKey = 'last_backup_timestamp';
+  static const String _hasBeenAskedKey = 'cloud_backup_has_been_asked';
+
+  SharedPreferences? _prefs;
 
   bool _autoBackupEnabled = false;
   DateTime? _lastBackupTime;
@@ -250,6 +253,23 @@ class CloudBackupService extends ChangeNotifier {
       AppLogger.error('Failed to delete cloud backups', error: e, stackTrace: stackTrace, tag: 'CloudBackup');
       return false;
     }
+  }
+
+  bool get hasBeenAskedAboutBackup {
+    return _prefs?.getBool(_hasBeenAskedKey) ?? false;
+  }
+
+  Future<void> setHasBeenAskedAboutBackup(bool value) async {
+    _prefs ??= await SharedPreferences.getInstance();
+    await _prefs!.setBool(_hasBeenAskedKey, value);
+    AppLogger.info('Has been asked about backup set to: $value', tag: 'CloudBackupService');
+  }
+
+  Future<void> resetBackupPreferences() async {
+    _prefs ??= await SharedPreferences.getInstance();
+    await _prefs!.remove(_hasBeenAskedKey);
+    await _prefs!.remove(_autoBackupKey);
+    AppLogger.info('Backup preferences reset', tag: 'CloudBackupService');
   }
 }
 

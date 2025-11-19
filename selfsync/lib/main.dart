@@ -409,6 +409,18 @@ class _MainScreenState extends State<MainScreen> {
       return;
     }
 
+    // Don't check if user is anonymous
+    if (widget.authService.isAnonymous) {
+      AppLogger.info('User is anonymous, skipping cloud backup check', tag: 'MainScreen');
+      return;
+    }
+
+    // Don't check if user has already been asked
+    if (widget.cloudBackupService.hasBeenAskedAboutBackup) {
+      AppLogger.info('User has already been asked about backup, skipping', tag: 'MainScreen');
+      return;
+    }
+
     final hasBackup = await widget.cloudBackupService.hasCloudBackup();
     final entries = _moodService.getAllEntries();
 
@@ -418,13 +430,70 @@ class _MainScreenState extends State<MainScreen> {
       // User has cloud backup but no local data - offer to restore
       AppLogger.info('Showing restore backup dialog', tag: 'MainScreen');
       _showRestoreBackupDialog();
+      // Mark as asked after showing dialog
+      await widget.cloudBackupService.setHasBeenAskedAboutBackup(true);
     } else if (!hasBackup && entries.isNotEmpty && mounted) {
       // User has local data but no cloud backup - offer to enable backups
       AppLogger.info('Showing enable backup dialog for ${entries.length} entries', tag: 'MainScreen');
       _showEnableBackupDialog(entries.length);
+      // Mark as asked after showing dialog
+      await widget.cloudBackupService.setHasBeenAskedAboutBackup(true);
+    } else if (!hasBackup && entries.isEmpty && mounted) {
+      // New user with no data and no backup - suggest enabling auto backup
+      AppLogger.info('New user, suggesting to enable auto backup', tag: 'MainScreen');
+      _showNewUserBackupDialog();
+      // Mark as asked will happen in the dialog button handlers
     } else {
       AppLogger.info('No cloud backup action needed', tag: 'MainScreen');
+      // Still mark as asked so we don't check again
+      await widget.cloudBackupService.setHasBeenAskedAboutBackup(true);
     }
+  }
+
+  void _showNewUserBackupDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Enable Cloud Backups?'),
+        content: const Text(
+          'Would you like to automatically backup your mood data to the cloud? '
+              'This keeps your data safe and synced across devices.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              final navigator = Navigator.of(context);
+
+              // User chose not to enable backup
+              await widget.cloudBackupService.setHasBeenAskedAboutBackup(true);
+              navigator.pop();
+            },
+            child: const Text('Not Now'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final navigator = Navigator.of(context);
+              final messenger = ScaffoldMessenger.of(context);
+
+              navigator.pop();
+              await widget.cloudBackupService.setAutoBackupEnabled(true);
+              await widget.cloudBackupService.setHasBeenAskedAboutBackup(true);
+
+              if (mounted) {
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('Auto backup enabled'),
+                    backgroundColor: Colors.green,
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+            },
+            child: const Text('Enable'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showRestoreBackupDialog() async {

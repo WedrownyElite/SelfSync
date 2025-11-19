@@ -1,6 +1,9 @@
 ﻿// ignore_for_file: unused_field
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'package:flutter/material.dart';
-import 'package:google_sign_in/google_sign_in.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../services/theme_service.dart';
 import '../services/analytics_service.dart';
 import '../services/mood_service.dart';
@@ -54,12 +57,15 @@ class SettingsScreenState extends State<SettingsScreen> {
   bool _isOnboardingActive = false;
   int _onboardingStep = 0;
 
+  final ImagePicker _imagePicker = ImagePicker();
+
   @override
   void initState() {
     super.initState();
     widget.themeService.addListener(_onThemeChanged);
     widget.analyticsService.addListener(_onAnalyticsChanged);
     widget.cloudBackupService.addListener(_onCloudBackupChanged);
+    widget.authService.addListener(_onAuthChanged);
   }
 
   @override
@@ -67,8 +73,17 @@ class SettingsScreenState extends State<SettingsScreen> {
     widget.themeService.removeListener(_onThemeChanged);
     widget.analyticsService.removeListener(_onAnalyticsChanged);
     widget.cloudBackupService.removeListener(_onCloudBackupChanged);
+    widget.authService.removeListener(_onAuthChanged);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onAuthChanged() {
+    // If user is no longer signed in, close settings screen
+    if (!widget.authService.isSignedIn && mounted) {
+      AppLogger.info('User signed out, closing settings screen', tag: 'SettingsScreen');
+      Navigator.of(context).pop();
+    }
   }
 
   void _openBugReportScreen(BuildContext context) {
@@ -279,6 +294,9 @@ class SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildAccountSection(ThemeData theme) {
     final user = widget.authService.currentUser;
+    final isAnonymous = widget.authService.isAnonymous;
+    final hasGoogle = widget.authService.hasGoogleProvider;
+    final hasEmail = widget.authService.hasEmailProvider;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -318,39 +336,101 @@ class SettingsScreenState extends State<SettingsScreen> {
           if (user != null) ...[
             Row(
               children: [
-                if (user.photoURL != null)
-                  CircleAvatar(
-                    radius: 24,
-                    backgroundImage: NetworkImage(user.photoURL!),
-                    backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
-                  )
-                else
-                  CircleAvatar(
-                    radius: 24,
-                    backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
-                    child: Icon(
-                      Icons.person_rounded,
-                      color: theme.colorScheme.primary,
-                    ),
+// Profile Picture with tap to upload
+                GestureDetector(
+                  onTap: !isAnonymous  // CHANGED: removed && !hasGoogle condition
+                      ? () => _showProfilePictureOptions(theme)
+                      : null,
+                  child: Stack(
+                    children: [
+                      if (user.photoURL != null && !isAnonymous)
+                        CircleAvatar(
+                          radius: 32,
+                          backgroundImage: NetworkImage(user.photoURL!),
+                          backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
+                        )
+                      else
+                        CircleAvatar(
+                          radius: 32,
+                          backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
+                          child: Icon(
+                            isAnonymous ? Icons.person_off_rounded : Icons.person_rounded,
+                            color: theme.colorScheme.primary,
+                            size: 32,
+                          ),
+                        ),
+
+                      // Camera icon overlay for all signed-in users (except anonymous)
+                      if (!isAnonymous)  // CHANGED: removed hasEmail && !hasGoogle condition
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: theme.colorScheme.surface,
+                                width: 2,
+                              ),
+                            ),
+                            child: Icon(
+                              Icons.camera_alt_rounded,
+                              size: 16,
+                              color: theme.colorScheme.onPrimary,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
+                ),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (user.displayName != null)
+                      if (isAnonymous)
                         Text(
-                          user.displayName!,
+                          'Anonymous User',
                           style: theme.textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w600,
                           ),
+                        )
+                      else ...[
+                        if (user.displayName != null)
+                          Text(
+                            user.displayName!,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        Text(
+                          user.email ?? 'No email',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                          ),
                         ),
-                      Text(
-                        user.email ?? 'No email',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                        ),
-                      ),
+
+                        // Show Google linked status
+                        if (hasGoogle)
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.link_rounded,
+                                size: 14,
+                                color: theme.colorScheme.primary,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Linked with Google',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                      ],
                     ],
                   ),
                 ),
@@ -358,31 +438,191 @@ class SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 20),
 
-            // Auto backup toggle
-            _buildPrivacyToggle(
-              theme: theme,
-              title: 'Automatic Cloud Backups',
-              description: 'Automatically backup your mood data to the cloud',
-              value: widget.cloudBackupService.autoBackupEnabled,
-              onChanged: (value) async {
-                await widget.cloudBackupService.setAutoBackupEnabled(value);
-
-                if (value && mounted) {
-                  // Perform immediate backup when enabled
-                  final entries = widget.moodService.getAllEntries();
-                  await widget.cloudBackupService.backupToCloud(entries);
-
-                  if (mounted) {  // ADD THIS CHECK
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Auto backup enabled and data backed up'),
-                        behavior: SnackBarBehavior.floating,
+            // Anonymous user: Show warning and conversion options
+            if (isAnonymous) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: theme.colorScheme.error.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.warning_rounded,
+                      size: 20,
+                      color: theme.colorScheme.error,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Your data is NOT backed up and will be lost if you uninstall the app or clear data.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.error,
+                          fontWeight: FontWeight.w600,
+                          height: 1.4,
+                        ),
                       ),
-                    );
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.cloud_upload_rounded,
+                      size: 20,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Create an account to enable cloud backups and sync your data across devices',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () => _showConvertAnonymousDialog(theme),
+                  icon: const Icon(Icons.person_add_rounded),
+                  label: const Text('Create Account & Enable Backups'),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+            ]
+            // Email user without Google: Show link Google option
+            else if (hasEmail && !hasGoogle) ...[
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _handleLinkGoogle(theme),
+                  icon: Image.asset(
+                    'assets/google_logo.png',
+                    height: 20,
+                    width: 20,
+                    errorBuilder: (context, error, stackTrace) {
+                      return const Icon(Icons.link_rounded, size: 20);
+                    },
+                  ),
+                  label: const Text('Link Google Account'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              _buildPrivacyToggle(
+                theme: theme,
+                title: 'Automatic Cloud Backups',
+                description: 'Automatically backup your mood data to the cloud',
+                value: widget.cloudBackupService.autoBackupEnabled,
+                onChanged: (value) async {
+                  await widget.cloudBackupService.setAutoBackupEnabled(value);
+
+                  if (value && mounted) {
+                    final entries = widget.moodService.getAllEntries();
+                    await widget.cloudBackupService.backupToCloud(entries);
+
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Auto backup enabled and data backed up'),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
                   }
-                }
-              },
-            ),
+                },
+              ),
+            ]
+            // Email user with Google: Show unlink option and backup toggle
+            else if (hasEmail && hasGoogle) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _handleUnlinkGoogle(theme),
+                    icon: const Icon(Icons.link_off_rounded),
+                    label: const Text('Unlink Google Account'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: theme.colorScheme.error,
+                      side: BorderSide(color: theme.colorScheme.error.withValues(alpha: 0.5)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _buildPrivacyToggle(
+                  theme: theme,
+                  title: 'Automatic Cloud Backups',
+                  description: 'Automatically backup your mood data to the cloud',
+                  value: widget.cloudBackupService.autoBackupEnabled,
+                  onChanged: (value) async {
+                    await widget.cloudBackupService.setAutoBackupEnabled(value);
+
+                    if (value && mounted) {
+                      final entries = widget.moodService.getAllEntries();
+                      await widget.cloudBackupService.backupToCloud(entries);
+
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Auto backup enabled and data backed up'),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      }
+                    }
+                  },
+                ),
+              ]
+              // Google only user: Show backup toggle
+              else ...[
+                  _buildPrivacyToggle(
+                    theme: theme,
+                    title: 'Automatic Cloud Backups',
+                    description: 'Automatically backup your mood data to the cloud',
+                    value: widget.cloudBackupService.autoBackupEnabled,
+                    onChanged: (value) async {
+                      await widget.cloudBackupService.setAutoBackupEnabled(value);
+
+                      if (value && mounted) {
+                        final entries = widget.moodService.getAllEntries();
+                        await widget.cloudBackupService.backupToCloud(entries);
+
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Auto backup enabled and data backed up'),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                  ),
+                ],
+
             const SizedBox(height: 20),
           ],
 
@@ -428,6 +668,1104 @@ class SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
+  }
+
+  void _showProfilePictureOptions(ThemeData theme) {
+    final user = widget.authService.currentUser;
+    final hasGoogle = widget.authService.hasGoogleProvider;
+
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded),
+              title: const Text('Choose from gallery'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickProfilePicture(ImageSource.gallery, theme);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_rounded),
+              title: const Text('Take a photo'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickProfilePicture(ImageSource.camera, theme);
+              },
+            ),
+            if (user?.photoURL != null)
+              ListTile(
+                leading: Icon(Icons.delete_rounded, color: theme.colorScheme.error),
+                title: Text(
+                  'Remove custom photo',
+                  style: TextStyle(color: theme.colorScheme.error),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _removeProfilePicture(theme);
+                },
+              ),
+            // Add option to restore Google photo if user has Google linked
+            if (hasGoogle && user?.photoURL != null)
+              ListTile(
+                leading: const Icon(Icons.restore_rounded),
+                title: const Text('Restore Google photo'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _restoreGoogleProfilePicture(theme);
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _restoreGoogleProfilePicture(ThemeData theme) async {
+    // Show confirmation
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Restore Google Photo?'),
+        content: const Text('This will replace your custom profile picture with your Google account photo.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Restore'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    // Capture context references
+    final messenger = ScaffoldMessenger.of(context);
+
+    // Show progress
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => PopScope(
+        canPop: false,
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    theme.colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Restoring Google photo...',
+                  style: theme.textTheme.bodyMedium,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final success = await widget.authService.restoreGoogleProfilePicture();
+
+    if (mounted) {
+      Navigator.pop(context); // Close progress dialog
+
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(success
+              ? 'Google photo restored'
+              : 'Failed to restore Google photo'),
+          backgroundColor: success ? Colors.green : theme.colorScheme.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _pickProfilePicture(ImageSource source, ThemeData theme) async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(
+        source: source,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 90,
+      );
+
+      if (image == null) return;
+
+      // Crop the image with circular overlay
+      final croppedFile = await ImageCropper().cropImage(
+        sourcePath: image.path,
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: 'Crop Profile Picture',
+            toolbarColor: theme.colorScheme.primary,
+            toolbarWidgetColor: theme.colorScheme.onPrimary,
+            initAspectRatio: CropAspectRatioPreset.square,
+            lockAspectRatio: true,
+            backgroundColor: theme.colorScheme.surface,
+            activeControlsWidgetColor: theme.colorScheme.primary,
+            cropFrameColor: theme.colorScheme.primary,
+            cropGridColor: theme.colorScheme.primary.withValues(alpha: 0.5),
+            hideBottomControls: false,
+            cropFrameStrokeWidth: 4,
+            cropStyle: CropStyle.circle,  // Circular crop for Android
+          ),
+          IOSUiSettings(
+            title: 'Crop Profile Picture',
+            aspectRatioLockEnabled: true,
+            resetAspectRatioEnabled: false,
+            cropStyle: CropStyle.circle,  // Circular crop for iOS
+          ),
+        ],
+        aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+      );
+
+      if (croppedFile == null) {
+        AppLogger.info('User cancelled image cropping', tag: 'SettingsScreen');
+        return;
+      }
+
+      if (!mounted) return;
+
+      // Capture context references before async gap
+      final navigator = Navigator.of(context);
+      final messenger = ScaffoldMessenger.of(context);
+
+      // Show uploading progress
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => PopScope(
+          canPop: false,
+          child: Center(
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      theme.colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Uploading profile picture...',
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // Upload to Firebase Storage and update profile
+      final photoURL = await widget.authService.uploadAndUpdateProfilePicture(croppedFile.path);
+
+      if (mounted) {
+        navigator.pop(); // Close progress dialog
+
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(photoURL != null
+                ? 'Profile picture updated'
+                : 'Failed to update profile picture'),
+            backgroundColor: photoURL != null ? Colors.green : theme.colorScheme.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      AppLogger.error('Failed to pick profile picture: $e', tag: 'SettingsScreen');
+
+      // Close progress dialog if it's showing
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Failed to update profile picture'),
+            backgroundColor: theme.colorScheme.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _removeProfilePicture(ThemeData theme) async {
+    // Show confirmation
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove Profile Picture?'),
+        content: const Text('Are you sure you want to remove your profile picture?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: theme.colorScheme.error,
+            ),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    // Capture context references BEFORE async gap
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+
+    // Show progress
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => PopScope(
+        canPop: false,
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    theme.colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Removing profile picture...',
+                  style: theme.textTheme.bodyMedium,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final success = await widget.authService.deleteProfilePicture();
+
+    if (mounted) {
+      navigator.pop(); // Close progress dialog
+
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(success
+              ? 'Profile picture removed'
+              : 'Failed to remove profile picture'),
+          backgroundColor: success ? Colors.green : theme.colorScheme.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _handleUnlinkGoogle(ThemeData theme) async {
+    // First, save current profile data before unlinking
+    final user = widget.authService.currentUser;
+    if (user == null) return;
+
+    // Show confirmation
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Unlink Google Account?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('This will unlink your Google account from Self Sync.'),
+            const SizedBox(height: 12),
+            const Text('You will still be able to sign in with your email and password.'),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline_rounded,
+                    size: 20,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Your custom profile picture will be restored if you had one.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: theme.colorScheme.error,
+            ),
+            child: const Text('Unlink'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    // Capture ScaffoldMessenger BEFORE any async gaps
+    final messenger = ScaffoldMessenger.of(context);
+
+    // Get user ID for profile storage
+    final userId = user.uid;
+
+    // Check if user has a custom profile picture stored
+    final prefs = await SharedPreferences.getInstance();
+    final savedPhotoURL = prefs.getString('profile_picture_$userId');
+    final savedDisplayName = prefs.getString('display_name_$userId');
+
+    try {
+      final success = await widget.authService.unlinkGoogleAccount();
+
+      if (success) {
+        // Restore saved profile data if it exists
+        if (savedPhotoURL != null && savedPhotoURL.isNotEmpty) {
+          await widget.authService.updateProfilePicture(savedPhotoURL);
+        }
+
+        if (savedDisplayName != null && savedDisplayName.isNotEmpty) {
+          await widget.authService.updateDisplayName(savedDisplayName);
+        }
+
+        if (mounted) {
+          messenger.showSnackBar(
+            const SnackBar(
+              content: Text('Google account unlinked successfully'),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(widget.authService.getAuthErrorMessage(e)),
+            backgroundColor: theme.colorScheme.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showConvertAnonymousDialog(ThemeData theme) {
+    final entries = widget.moodService.getAllEntries();
+    final hasData = entries.isNotEmpty;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Create Account'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (hasData) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline_rounded,
+                      size: 20,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'You have ${entries.length} mood ${entries.length == 1 ? "entry" : "entries"}. Your data will be merged with your new account.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+            const Text('Choose how you\'d like to create your account:'),
+            const SizedBox(height: 16),
+
+            // Email/Password option
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _showEmailAccountChoiceDialog(theme);
+                },
+                icon: const Icon(Icons.email_rounded),
+                label: const Text('Email & Password'),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Google option
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  Navigator.pop(context);
+                  await _convertAnonymousToGoogleWithConfirmation(theme);
+                },
+                icon: Image.asset(
+                  'assets/google_logo.png',
+                  height: 20,
+                  width: 20,
+                  errorBuilder: (context, error, stackTrace) {
+                    return const Icon(Icons.login_rounded, size: 20);
+                  },
+                ),
+                label: const Text('Google Account'),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _convertAnonymousToGoogleWithConfirmation(ThemeData theme) async {
+    final entries = widget.moodService.getAllEntries();
+    final hasData = entries.isNotEmpty;
+
+    if (hasData) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Link Google Account?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('This will link your Google account to Self Sync.'),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.merge_rounded,
+                      size: 20,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Your ${entries.length} mood ${entries.length == 1 ? "entry" : "entries"} will be kept in your Google account.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Link & Keep Data'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm != true) return;
+    }
+
+    // Proceed with Google conversion
+    await _convertAnonymousToGoogle(theme);
+  }
+
+  void _showEmailAccountChoiceDialog(ThemeData theme) {
+    final entries = widget.moodService.getAllEntries();
+    final hasData = entries.isNotEmpty;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Email & Password'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (hasData) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline_rounded,
+                      size: 20,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'You have ${entries.length} mood ${entries.length == 1 ? "entry" : "entries"}.',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+            const Text('Would you like to:'),
+            const SizedBox(height: 16),
+
+            // Sign in to existing account
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _showEmailSignInDialog(theme);
+                },
+                icon: const Icon(Icons.login_rounded),
+                label: Text(hasData
+                    ? 'Sign in & merge data'
+                    : 'Sign in to existing account'),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Create new account
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _showEmailRegistrationDialog(theme);
+                },
+                icon: const Icon(Icons.person_add_rounded),
+                label: const Text('Create new account'),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEmailSignInDialog(ThemeData theme) {
+    final emailController = TextEditingController();
+    final passwordController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    bool obscurePassword = true;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Sign In'),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(
+                    labelText: 'Email',
+                    prefixIcon: Icon(Icons.email_rounded),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter your email';
+                    }
+                    if (!value.contains('@')) {
+                      return 'Please enter a valid email';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: passwordController,
+                  obscureText: obscurePassword,
+                  decoration: InputDecoration(
+                    labelText: 'Password',
+                    prefixIcon: const Icon(Icons.lock_rounded),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        obscurePassword
+                            ? Icons.visibility_rounded
+                            : Icons.visibility_off_rounded,
+                      ),
+                      onPressed: () {
+                        setState(() => obscurePassword = !obscurePassword);
+                      },
+                    ),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter your password';
+                    }
+                    return null;
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                if (formKey.currentState!.validate()) {
+                  Navigator.pop(context);
+                  await _convertAnonymousWithSignIn(
+                    emailController.text.trim(),
+                    passwordController.text,
+                    theme,
+                  );
+                }
+              },
+              child: const Text('Sign In'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEmailRegistrationDialog(ThemeData theme) {
+    final emailController = TextEditingController();
+    final passwordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+    final nameController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    bool obscurePassword = true;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Create Account'),
+          content: SingleChildScrollView(
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Name (optional)',
+                      prefixIcon: Icon(Icons.person_rounded),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(
+                      labelText: 'Email',
+                      prefixIcon: Icon(Icons.email_rounded),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please enter your email';
+                      }
+                      if (!value.contains('@')) {
+                        return 'Please enter a valid email';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: passwordController,
+                    obscureText: obscurePassword,
+                    decoration: InputDecoration(
+                      labelText: 'Password',
+                      prefixIcon: const Icon(Icons.lock_rounded),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          obscurePassword
+                              ? Icons.visibility_rounded
+                              : Icons.visibility_off_rounded,
+                        ),
+                        onPressed: () {
+                          setState(() => obscurePassword = !obscurePassword);
+                        },
+                      ),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please enter a password';
+                      }
+                      if (value.length < 6) {
+                        return 'Password must be at least 6 characters';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: confirmPasswordController,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Confirm Password',
+                      prefixIcon: Icon(Icons.lock_rounded),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please confirm your password';
+                      }
+                      if (value != passwordController.text) {
+                        return 'Passwords do not match';
+                      }
+                      return null;
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                if (formKey.currentState!.validate()) {
+                  Navigator.pop(context);
+                  await _convertAnonymousToEmail(
+                    emailController.text.trim(),
+                    passwordController.text,
+                    nameController.text.trim().isNotEmpty
+                        ? nameController.text.trim()
+                        : null,
+                    theme,
+                  );
+                }
+              },
+              child: const Text('Create Account'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _convertAnonymousWithSignIn(
+      String email,
+      String password,
+      ThemeData theme,
+      ) async {
+    final messenger = mounted ? ScaffoldMessenger.of(context) : null;
+
+    try {
+      // Get current anonymous user's data
+      final anonymousEntries = widget.moodService.getAllEntries();
+
+      // Sign in to existing account
+      final success = await widget.authService.signInWithEmail(email, password);
+
+      if (success && anonymousEntries.isNotEmpty) {
+        // Merge anonymous data with signed-in account
+        for (final entry in anonymousEntries) {
+          widget.moodService.importEntry(entry);
+        }
+
+        if (mounted && messenger != null) {
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text('Signed in successfully! Merged ${anonymousEntries.length} entries.'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else if (success && mounted && messenger != null) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Signed in successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else if (!success && mounted && messenger != null) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: const Text('Failed to sign in'),
+            backgroundColor: theme.colorScheme.error,
+          ),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      if (mounted && messenger != null) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(widget.authService.getAuthErrorMessage(e)),
+            backgroundColor: theme.colorScheme.error,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _convertAnonymousToEmail(
+      String email,
+      String password,
+      String? name,
+      ThemeData theme,
+      ) async {
+    try {
+      final success = await widget.authService.convertAnonymousToEmail(
+        email,
+        password,
+        displayName: name,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(success
+                ? 'Account created successfully!'
+                : 'Failed to create account'),
+            backgroundColor: success ? Colors.green : theme.colorScheme.error,
+          ),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(widget.authService.getAuthErrorMessage(e)),
+            backgroundColor: theme.colorScheme.error,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _convertAnonymousToGoogle(ThemeData theme) async {
+    try {
+      final success = await widget.authService.convertAnonymousToGoogle();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(success
+                ? 'Account linked successfully!'
+                : 'Failed to link account'),
+            backgroundColor: success ? Colors.green : theme.colorScheme.error,
+          ),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(widget.authService.getAuthErrorMessage(e)),
+            backgroundColor: theme.colorScheme.error,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleLinkGoogle(ThemeData theme) async {
+    final entries = widget.moodService.getAllEntries();
+    final hasData = entries.isNotEmpty;
+
+    // Show confirmation if user has data
+    if (hasData) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Link Google Account?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('This will link your Google account to Self Sync.'),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.merge_rounded,
+                      size: 20,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Your ${entries.length} mood ${entries.length == 1 ? "entry" : "entries"} will be merged with your Google account.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Link & Merge'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm != true) return;
+    }
+
+    // Proceed with linking
+    await _performGoogleLink(theme);
+  }
+
+  Future<void> _performGoogleLink(ThemeData theme) async {
+    // Save current profile data before linking
+    final user = widget.authService.currentUser;
+    if (user != null) {
+      final prefs = await SharedPreferences.getInstance();
+
+      // Save current custom profile picture URL if it exists
+      if (user.photoURL != null &&
+          user.photoURL!.isNotEmpty &&
+          user.photoURL!.contains('firebase')) {
+        await prefs.setString('profile_picture_${user.uid}', user.photoURL!);
+        AppLogger.info('Saved custom profile picture before linking Google', tag: 'SettingsScreen');
+      }
+
+      // Save current display name
+      if (user.displayName != null && user.displayName!.isNotEmpty) {
+        await prefs.setString('display_name_${user.uid}', user.displayName!);
+      }
+    }
+
+    final messenger = mounted ? ScaffoldMessenger.of(context) : null;
+
+    try {
+      final success = await widget.authService.linkGoogleAccount();
+
+      if (mounted && messenger != null) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(success
+                ? 'Google account linked successfully!'
+                : 'Failed to link Google account'),
+            backgroundColor: success ? Colors.green : theme.colorScheme.error,
+          ),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      if (mounted && messenger != null) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(widget.authService.getAuthErrorMessage(e)),
+            backgroundColor: theme.colorScheme.error,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildThemeModeSection(ThemeData theme) {
@@ -1638,11 +2976,12 @@ class SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _performAccountDeletion(BuildContext context, ThemeData theme) async {
-    final scaffoldContext = context;
+    // Capture a navigator key before showing dialog
+    final navigator = Navigator.of(context);
 
     // Show progress
     showDialog(
-      context: scaffoldContext,
+      context: context,
       barrierDismissible: false,
       builder: (context) => PopScope(
         canPop: false,
@@ -1679,51 +3018,79 @@ class SettingsScreenState extends State<SettingsScreen> {
     // Clear local data
     await widget.moodService.clearAllData();
 
+    // Reset backup preferences - ADD THIS
+    await widget.cloudBackupService.resetBackupPreferences();
+
     // Try to delete Firebase account
     bool accountDeleted = false;
     bool needsReauth = false;
+    String? errorMessage;
 
     try {
       accountDeleted = await widget.authService.deleteAccount();
-    } catch (e) {
-      final errorString = e.toString().toLowerCase();
-      if (errorString.contains('requires-recent-login') ||
-          errorString.contains('recent-login') ||
-          errorString.contains('reauthenticate')) {
+    } on FirebaseAuthException catch (e) {
+      AppLogger.info('Firebase auth exception: ${e.code}', tag: 'SettingsScreen');
+
+      if (e.code == 'requires-recent-login') {
         needsReauth = true;
+        AppLogger.info('Setting needsReauth to true', tag: 'SettingsScreen');
+      } else {
+        errorMessage = widget.authService.getAuthErrorMessage(e);
       }
+    } catch (e) {
+      AppLogger.error('Unexpected error during account deletion: $e', tag: 'SettingsScreen');
+      errorMessage = 'An unexpected error occurred. Please try again.';
     }
 
-    if (scaffoldContext.mounted) {
-      Navigator.pop(scaffoldContext); // Close progress dialog
+    // Close progress dialog IMMEDIATELY
+    if (navigator.canPop()) {
+      navigator.pop();
+    }
 
-      if (needsReauth) {
-        // Show re-authentication dialog with direct sign-in
-        _showReauthenticationDialog(scaffoldContext, theme);
-      } else if (accountDeleted) {
-        widget.analyticsService.trackEvent('account_deleted');
+    AppLogger.info('After progress dialog close - needsReauth: $needsReauth, accountDeleted: $accountDeleted', tag: 'SettingsScreen');
 
-        // Close settings screen to show auth screen
-        if (scaffoldContext.mounted) {
-          Navigator.pop(scaffoldContext);
-        }
+    if (needsReauth) {
+      AppLogger.info('Handling reauth requirement', tag: 'SettingsScreen');
 
-        // Show success message
-        if (scaffoldContext.mounted) {
-          ScaffoldMessenger.of(scaffoldContext).showSnackBar(
-            SnackBar(
-              content: const Text('Account deleted successfully'),
-              backgroundColor: Colors.green,
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 3),
-            ),
-          );
-        }
-      } else {
-        // Some other error occurredaw
-        ScaffoldMessenger.of(scaffoldContext).showSnackBar(
+      // Reset onboarding state so they see privacy policy on next sign-in
+      await widget.onboardingService.resetAll();
+
+      // Perform complete sign-out including Google
+      await widget.authService.completeSignOut();
+
+      // Navigate back
+      if (navigator.canPop()) {
+        navigator.pop();
+      }
+    } else if (accountDeleted) {
+      AppLogger.success('Account deleted successfully', tag: 'SettingsScreen');
+      widget.analyticsService.trackEvent('account_deleted');
+
+      // CRITICAL: Reset ALL app state for new user experience
+      AppLogger.info('Resetting all app state...', tag: 'SettingsScreen');
+
+      // Reset onboarding state
+      await widget.onboardingService.resetAll();
+
+      // Reset cloud backup settings (already done above)
+      await widget.cloudBackupService.setAutoBackupEnabled(false);
+
+      // Perform complete sign-out (including Google)
+      await widget.authService.completeSignOut();
+
+      // Close settings immediately
+      if (navigator.canPop()) {
+        navigator.pop();
+      }
+
+      AppLogger.success('Account deletion and cleanup complete', tag: 'SettingsScreen');
+    } else {
+      AppLogger.info('Showing error message: $errorMessage', tag: 'SettingsScreen');
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Failed to delete account. Please try again or contact support.'),
+            content: Text(errorMessage ?? 'Failed to delete account. Please try again.'),
             backgroundColor: theme.colorScheme.error,
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 5),
@@ -1731,83 +3098,6 @@ class SettingsScreenState extends State<SettingsScreen> {
         );
       }
     }
-  }
-
-  void _showReauthenticationDialog(BuildContext context, ThemeData theme) {
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        icon: Icon(
-          Icons.lock_reset_rounded,
-          color: theme.colorScheme.primary,
-          size: 48,
-        ),
-        title: const Text('Re-authentication Required'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'For your security, deleting your account requires recent authentication.',
-              style: theme.textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'You\'ll be signed out so you can sign back in to confirm your identity.',
-              style: theme.textTheme.bodyMedium,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              Navigator.pop(dialogContext); // Close dialog
-
-              try {
-                // Create a fresh GoogleSignIn instance
-                final googleSignIn = GoogleSignIn();
-
-                // First disconnect to revoke access
-                await googleSignIn.disconnect();
-
-                // Then sign out to clear any remaining state
-                await googleSignIn.signOut();
-              } catch (e) {
-                // Ignore errors - user might not be signed in with Google
-              }
-
-              // Sign out from Firebase
-              await widget.authService.signOut();
-
-              // Close settings screen
-              if (context.mounted) {
-                Navigator.pop(context);
-              }
-
-              // Show instruction message on auth screen
-              if (context.mounted) {
-                await Future.delayed(const Duration(milliseconds: 500));
-
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Please sign in again, then go to Settings to delete your account.'),
-                      behavior: SnackBarBehavior.floating,
-                      duration: Duration(seconds: 5),
-                    ),
-                  );
-                }
-              }
-            },
-            child: const Text('Sign In Again'),
-          ),
-        ],
-      ),
-    );
   }
 
   void _showRestoreBackupDialog(BuildContext context, ThemeData theme) async {

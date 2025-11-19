@@ -1,103 +1,70 @@
 ﻿import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../utils/app_logger.dart';
 
 class OnboardingService extends ChangeNotifier {
-  static const String _hasCompletedOnboardingKey = 'has_completed_onboarding';
-  static const String _hasCompletedTutorialKey = 'has_completed_tutorial';
   static const String _privacyAcceptedKey = 'privacy_policy_accepted';
-  static const String _privacyAcceptedDateKey = 'privacy_accepted_date';
+  static const String _tutorialCompletedKey = 'tutorial_completed';
 
-  bool _hasCompletedOnboarding = false;
-  bool _hasCompletedTutorial = false;
+  SharedPreferences? _prefs;
   bool _privacyAccepted = false;
-  DateTime? _privacyAcceptedDate;
+  bool _tutorialCompleted = false;
 
-  bool get hasCompletedOnboarding => _hasCompletedOnboarding;
-  bool get hasCompletedTutorial => _hasCompletedTutorial;
   bool get privacyAccepted => _privacyAccepted;
-  DateTime? get privacyAcceptedDate => _privacyAcceptedDate;
-
-  /// Check if user should see tutorial
-  /// Show tutorial if they haven't completed it yet
-  bool get shouldShowTutorial => !_hasCompletedTutorial;
+  bool get tutorialCompleted => _tutorialCompleted;
+  bool get shouldShowTutorial => _privacyAccepted && !_tutorialCompleted;
 
   OnboardingService() {
     _loadPreferences();
   }
 
   Future<void> _loadPreferences() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    _hasCompletedOnboarding = prefs.getBool(_hasCompletedOnboardingKey) ?? false;
-    _hasCompletedTutorial = prefs.getBool(_hasCompletedTutorialKey) ?? false;
-    _privacyAccepted = prefs.getBool(_privacyAcceptedKey) ?? false;
-
-    final dateString = prefs.getString(_privacyAcceptedDateKey);
-    if (dateString != null) {
-      _privacyAcceptedDate = DateTime.tryParse(dateString);
-    }
-
-    notifyListeners();
-  }
-
-  Future<void> completeOnboarding() async {
-    _hasCompletedOnboarding = true;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_hasCompletedOnboardingKey, true);
-    notifyListeners();
-  }
-
-  Future<void> completeTutorial() async {
-    _hasCompletedTutorial = true;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_hasCompletedTutorialKey, true);
+    _prefs = await SharedPreferences.getInstance();
+    _privacyAccepted = _prefs?.getBool(_privacyAcceptedKey) ?? false;
+    _tutorialCompleted = _prefs?.getBool(_tutorialCompletedKey) ?? false;
     notifyListeners();
   }
 
   Future<void> acceptPrivacyPolicy() async {
+    _prefs ??= await SharedPreferences.getInstance();
+    await _prefs!.setBool(_privacyAcceptedKey, true);
     _privacyAccepted = true;
-    _privacyAcceptedDate = DateTime.now();
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_privacyAcceptedKey, true);
-    await prefs.setString(_privacyAcceptedDateKey, _privacyAcceptedDate!.toIso8601String());
-
     notifyListeners();
+    AppLogger.info('Privacy policy accepted', tag: 'OnboardingService');
   }
 
-  /// Reset privacy policy acceptance
+  Future<void> completeTutorial() async {
+    _prefs ??= await SharedPreferences.getInstance();
+    await _prefs!.setBool(_tutorialCompletedKey, true);
+    _tutorialCompleted = true;
+    notifyListeners();
+    AppLogger.info('Tutorial completed', tag: 'OnboardingService');
+  }
+
   Future<void> resetPrivacyPolicy() async {
+    _prefs ??= await SharedPreferences.getInstance();
+    await _prefs!.remove(_privacyAcceptedKey);
     _privacyAccepted = false;
-    _privacyAcceptedDate = null;
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_privacyAcceptedKey, false);
-    await prefs.remove(_privacyAcceptedDateKey);
-
     notifyListeners();
-  }
-
-  Future<void> resetOnboarding() async {
-    _hasCompletedOnboarding = false;
-    _hasCompletedTutorial = false;
-    _privacyAccepted = false;
-    _privacyAcceptedDate = null;
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_hasCompletedOnboardingKey);
-    await prefs.remove(_hasCompletedTutorialKey);
-    await prefs.remove(_privacyAcceptedKey);
-    await prefs.remove(_privacyAcceptedDateKey);
-
-    notifyListeners();
+    AppLogger.info('Privacy policy reset', tag: 'OnboardingService');
   }
 
   Future<void> resetTutorial() async {
-    _hasCompletedTutorial = false;
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_hasCompletedTutorialKey);
-
+    _prefs ??= await SharedPreferences.getInstance();
+    await _prefs!.remove(_tutorialCompletedKey);
+    _tutorialCompleted = false;
     notifyListeners();
+    AppLogger.info('Tutorial reset', tag: 'OnboardingService');
+  }
+
+  /// Reset all onboarding state (for account deletion)
+  Future<void> resetAll() async {
+    _prefs ??= await SharedPreferences.getInstance();
+    await _prefs!.remove(_privacyAcceptedKey);
+    await _prefs!.remove(_tutorialCompletedKey);
+    _privacyAccepted = false;
+    _tutorialCompleted = false;
+    notifyListeners();
+    AppLogger.info('All onboarding state reset', tag: 'OnboardingService');
   }
 }
