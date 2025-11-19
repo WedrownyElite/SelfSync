@@ -74,6 +74,8 @@ class _SelfSyncAppState extends State<SelfSyncApp> {
   late final AuthService _authService;
   late final CloudBackupService _cloudBackupService;
   bool _isInitialized = false;
+  bool _isMainScreenReady = false;
+  String? _lastAuthUserId; // Track user ID to detect actual auth changes
 
   @override
   void initState() {
@@ -88,10 +90,21 @@ class _SelfSyncAppState extends State<SelfSyncApp> {
     _authService.addListener(_onAuthChanged);
 
     _trackStartupTime();
-    _waitForInitialization();
+    _initializeApp();
   }
 
   void _onAuthChanged() {
+    final currentUserId = _authService.currentUser?.uid;
+
+    // Only reset if the user actually changed (not just auth state updating)
+    if (_lastAuthUserId != currentUserId) {
+      AppLogger.info('Auth user changed from $_lastAuthUserId to $currentUserId', tag: 'SelfSyncApp');
+      _lastAuthUserId = currentUserId;
+      _isMainScreenReady = false;
+    } else {
+      AppLogger.info('Auth state updated but user unchanged', tag: 'SelfSyncApp');
+    }
+
     setState(() {});
   }
 
@@ -103,11 +116,29 @@ class _SelfSyncAppState extends State<SelfSyncApp> {
     });
   }
 
-  Future<void> _waitForInitialization() async {
-    await Future.delayed(const Duration(milliseconds: 100));
-    setState(() {
-      _isInitialized = true;
-    });
+  Future<void> _initializeApp() async {
+    AppLogger.info('Initializing app services...', tag: 'SelfSyncApp');
+
+    // Wait for all services to initialize
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    AppLogger.success('App initialization complete', tag: 'SelfSyncApp');
+
+    if (mounted) {
+      setState(() {
+        _isInitialized = true;
+        _lastAuthUserId = _authService.currentUser?.uid; // Track initial user
+      });
+    }
+  }
+
+  void _onMainScreenReady() {
+    AppLogger.info('MainScreen reports ready', tag: 'SelfSyncApp');
+    if (mounted) {
+      setState(() {
+        _isMainScreenReady = true;
+      });
+    }
   }
 
   @override
@@ -128,36 +159,58 @@ class _SelfSyncAppState extends State<SelfSyncApp> {
 
   @override
   Widget build(BuildContext context) {
-    AppLogger.lifecycle('Building SelfSyncApp widget', tag: 'SelfSyncApp');
+    AppLogger.lifecycle('Building SelfSyncApp widget - isInit: $_isInitialized, isSignedIn: ${_authService.isSignedIn}, isReady: $_isMainScreenReady', tag: 'SelfSyncApp');
 
-    if (!_isInitialized) {
-      return MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: _themeService.getLightTheme(),
-        darkTheme: _themeService.getDarkTheme(),
-        themeMode: _themeService.themeMode,
-        home: LoadingScreen(
-          message: 'Initializing Self Sync...',
-          primaryColor: _themeService.selectedGradient.colors.primary,
-        ),
-      );
-    }
-
-    return MaterialApp(
+    final materialApp = MaterialApp(
       title: 'Self Sync',
       debugShowCheckedModeBanner: false,
       theme: _themeService.getLightTheme(),
       darkTheme: _themeService.getDarkTheme(),
       themeMode: _themeService.themeMode,
-      home: _authService.isSignedIn
-          ? MainScreen(
-        themeService: _themeService,
-        analyticsService: widget.analyticsService,
-        onboardingService: _onboardingService,
-        authService: _authService,
-        cloudBackupService: _cloudBackupService,
-      )
-          : AuthScreen(authService: _authService),
+      home: _buildHome(),
+    );
+
+    return materialApp;
+  }
+
+  Widget _buildHome() {
+    // Show loading screen during initialization
+    if (!_isInitialized) {
+      AppLogger.info('Showing initialization loading screen', tag: 'SelfSyncApp');
+      return LoadingScreen(
+        message: 'Initializing Self Sync...',
+        primaryColor: _themeService.selectedGradient.colors.primary,
+      );
+    }
+
+    // Show auth screen if not signed in
+    if (!_authService.isSignedIn) {
+      AppLogger.info('Showing auth screen', tag: 'SelfSyncApp');
+      return AuthScreen(authService: _authService);
+    }
+
+    // Build MainScreen and show loading overlay while it initializes
+    AppLogger.info('Building main screen (ready: $_isMainScreenReady)', tag: 'SelfSyncApp');
+
+    return Stack(
+      children: [
+        // Always build MainScreen so it can initialize
+        MainScreen(
+          themeService: _themeService,
+          analyticsService: widget.analyticsService,
+          onboardingService: _onboardingService,
+          authService: _authService,
+          cloudBackupService: _cloudBackupService,
+          onReady: _onMainScreenReady,
+        ),
+
+        // Show loading overlay until MainScreen is ready
+        if (!_isMainScreenReady)
+          LoadingScreen(
+            message: 'Loading your data...',
+            primaryColor: _themeService.selectedGradient.colors.primary,
+          ),
+      ],
     );
   }
 }
@@ -168,6 +221,7 @@ class MainScreen extends StatefulWidget {
   final OnboardingService onboardingService;
   final AuthService authService;
   final CloudBackupService cloudBackupService;
+  final VoidCallback onReady;
 
   const MainScreen({
     super.key,
@@ -176,6 +230,7 @@ class MainScreen extends StatefulWidget {
     required this.onboardingService,
     required this.authService,
     required this.cloudBackupService,
+    required this.onReady,
   });
 
   @override
@@ -187,6 +242,8 @@ class _MainScreenState extends State<MainScreen> {
   late final MoodService _moodService;
   late final SideDrawerController _drawerController;
   DateTime? _targetDate;
+  // ignore: unused_field
+  bool _isReady = false; // Track if screen is ready to show
 
   late final CalendarScreen _calendarScreen;
   late final TrendsScreen _trendsScreen;
@@ -248,9 +305,6 @@ class _MainScreenState extends State<MainScreen> {
   bool _hasGeneratedFakeData = false;
   final List<String> _fakeDataEntryIds = [];
 
-  bool _isLoadingData = true;
-  bool _shouldShowPrivacyPolicy = false;
-
   @override
   void initState() {
     super.initState();
@@ -258,10 +312,6 @@ class _MainScreenState extends State<MainScreen> {
 
     _moodService = MoodService();
     _drawerController = SideDrawerController();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkForCloudBackupOnFirstLaunch();
-    });
 
     // Listen to drawer state changes for onboarding progression
     _drawerController.addListener(_onDrawerStateChanged);
@@ -297,36 +347,83 @@ class _MainScreenState extends State<MainScreen> {
 
     widget.analyticsService.trackScreenView(_getTabName(_currentIndex));
 
-    if (!widget.onboardingService.privacyAccepted) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _showPrivacyPolicy();
-      });
-    } else if (widget.onboardingService.shouldShowTutorial) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (mounted) {
-            _showTutorial();
-          }
+    // Initialize screen and show privacy policy or tutorial after a delay
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeMainScreen();
+    });
+  }
+
+  Future<void> _initializeMainScreen() async {
+    AppLogger.info('MainScreen initializing...', tag: 'MainScreen');
+
+    // Small delay to ensure everything is mounted
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    // Now show privacy policy or tutorial BEFORE hiding loading screen
+    if (!widget.onboardingService.privacyAccepted && mounted) {
+      AppLogger.info('Showing privacy policy', tag: 'MainScreen');
+
+      // Show the privacy dialog FIRST
+      _showPrivacyPolicy();
+
+      // Wait a bit longer to ensure dialog is fully rendered
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      // NOW mark as ready and hide loading screen
+      if (mounted) {
+        setState(() {
+          _isReady = true;
         });
+        widget.onReady();
+      }
+    } else if (widget.onboardingService.shouldShowTutorial && mounted) {
+      // Mark ready first for tutorial since it needs the UI
+      setState(() {
+        _isReady = true;
       });
+      widget.onReady();
+
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (mounted) {
+        AppLogger.info('Showing tutorial', tag: 'MainScreen');
+        _showTutorial();
+      }
+    } else if (mounted) {
+      // No privacy or tutorial needed, just mark as ready
+      setState(() {
+        _isReady = true;
+      });
+      widget.onReady();
+
+      // Check for cloud backup
+      _checkForCloudBackupOnFirstLaunch();
     }
   }
 
   Future<void> _checkForCloudBackupOnFirstLaunch() async {
-    // Wait for privacy policy and tutorial to complete first
-    if (!widget.onboardingService.privacyAccepted || widget.onboardingService.shouldShowTutorial) {
+    AppLogger.info('Checking for cloud backup on first launch', tag: 'MainScreen');
+
+    // Don't check if privacy hasn't been accepted yet
+    if (!widget.onboardingService.privacyAccepted) {
+      AppLogger.info('Privacy not accepted, skipping cloud backup check', tag: 'MainScreen');
       return;
     }
 
     final hasBackup = await widget.cloudBackupService.hasCloudBackup();
     final entries = _moodService.getAllEntries();
 
+    AppLogger.info('Cloud backup check: hasBackup=$hasBackup, entries=${entries.length}', tag: 'MainScreen');
+
     if (hasBackup && entries.isEmpty && mounted) {
       // User has cloud backup but no local data - offer to restore
+      AppLogger.info('Showing restore backup dialog', tag: 'MainScreen');
       _showRestoreBackupDialog();
     } else if (!hasBackup && entries.isNotEmpty && mounted) {
       // User has local data but no cloud backup - offer to enable backups
+      AppLogger.info('Showing enable backup dialog for ${entries.length} entries', tag: 'MainScreen');
       _showEnableBackupDialog(entries.length);
+    } else {
+      AppLogger.info('No cloud backup action needed', tag: 'MainScreen');
     }
   }
 
@@ -1066,6 +1163,12 @@ class _MainScreenState extends State<MainScreen> {
           _clearFakeDataAfterOnboarding();
           await widget.onboardingService.completeTutorial();
           widget.analyticsService.trackEvent('tutorial_completed');
+
+          // Small delay to let UI settle before showing dialog
+          await Future.delayed(const Duration(milliseconds: 500));
+          if (mounted) {
+            _checkForCloudBackupOnFirstLaunch();
+          }
         },
         onSkip: () async {
           setState(() => _isOnboardingActive = false);
@@ -1077,6 +1180,12 @@ class _MainScreenState extends State<MainScreen> {
           _clearFakeDataAfterOnboarding();
           await widget.onboardingService.completeTutorial();
           widget.analyticsService.trackEvent('tutorial_skipped');
+
+          // Small delay to let UI settle before showing dialog
+          await Future.delayed(const Duration(milliseconds: 500));
+          if (mounted) {
+            _checkForCloudBackupOnFirstLaunch();
+          }
         },
       );
     });

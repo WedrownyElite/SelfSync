@@ -1438,163 +1438,202 @@ class SettingsScreenState extends State<SettingsScreen> {
       barrierDismissible: false,
       builder: (dialogContext) => PopScope(
         canPop: false, // Prevent back button
-        child: AlertDialog(
-          icon: Icon(
-            Icons.warning_rounded,
-            color: theme.colorScheme.error,
-            size: 48,
-          ),
-          title: const Text('Delete Account?'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'This will permanently delete:',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+        child: StatefulBuilder(
+          builder: (context, setState) {
+            // Check keyboard visibility
+            final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+            final isKeyboardVisible = bottomInset > 0;
+
+            return AlertDialog(
+              contentPadding: const EdgeInsets.fromLTRB(24, 0, 24, 0),
+              icon: AnimatedScale(
+                scale: isKeyboardVisible ? 0.7 : 1.0,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+                child: Icon(
+                  Icons.warning_rounded,
+                  color: theme.colorScheme.error,
+                  size: 48,
                 ),
-                const SizedBox(height: 12),
-                _buildDeleteItem('Your account and profile', theme),
-                _buildDeleteItem('All cloud backups', theme),
-                _buildDeleteItem('All mood data from our servers', theme),
-                _buildDeleteItem('Your app settings and preferences', theme),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.errorContainer.withValues(alpha: 0.5),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: theme.colorScheme.error,
-                      width: 2,
-                    ),
-                  ),
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.error_outline_rounded,
-                        color: theme.colorScheme.error,
-                        size: 32,
+              ),
+              title: AnimatedScale(
+                scale: isKeyboardVisible ? 0.85 : 1.0,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+                child: const Text('Delete Account?'),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 16),
+
+                    // Wrap list items in AnimatedCrossFade
+                    AnimatedCrossFade(
+                      firstChild: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'This will permanently delete:',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          _buildDeleteItem('Your account and profile', theme),
+                          _buildDeleteItem('All cloud backups', theme),
+                          _buildDeleteItem('All mood data from our servers', theme),
+                          _buildDeleteItem('Your app settings and preferences', theme),
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.errorContainer.withValues(alpha: 0.5),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: theme.colorScheme.error,
+                                width: 2,
+                              ),
+                            ),
+                            child: Column(
+                              children: [
+                                Icon(
+                                  Icons.error_outline_rounded,
+                                  color: theme.colorScheme.error,
+                                  size: 32,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'THIS ACTION CANNOT BE UNDONE',
+                                  style: theme.textTheme.titleSmall?.copyWith(
+                                    color: theme.colorScheme.error,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'All your data will be permanently lost',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.error,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'THIS ACTION CANNOT BE UNDONE',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          color: theme.colorScheme.error,
-                          fontWeight: FontWeight.bold,
+                      secondChild: const SizedBox(height: 8),
+                      crossFadeState: isKeyboardVisible
+                          ? CrossFadeState.showSecond
+                          : CrossFadeState.showFirst,
+                      duration: const Duration(milliseconds: 300),
+                    ),
+
+                    Text(
+                      'Type DELETE to confirm:',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: confirmController,
+                      decoration: InputDecoration(
+                        hintText: 'Type DELETE',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide(color: theme.colorScheme.error),
                         ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'All your data will be permanently lost',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.error,
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide(color: theme.colorScheme.error, width: 2),
                         ),
-                        textAlign: TextAlign.center,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
                       ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Type DELETE to confirm:',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: confirmController,
-                  decoration: InputDecoration(
-                    hintText: 'Type DELETE',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: theme.colorScheme.error),
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      textCapitalization: TextCapitalization.characters,
+                      onChanged: (value) {
+                        setState(() {});
+                      },
                     ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: theme.colorScheme.error, width: 2),
-                    ),
-                  ),
-                  autocorrect: false,
-                  enableSuggestions: false,
+                    const SizedBox(height: 16),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    // Dismiss keyboard first
+                    FocusScope.of(dialogContext).unfocus();
+
+                    // Close dialog immediately
+                    Navigator.pop(dialogContext);
+                  },
+                  child: const Text('Cancel'),
+                ),
+                ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: confirmController,
+                  builder: (context, value, child) {
+                    final isDeleteTyped = value.text.trim().toUpperCase() == 'DELETE';
+
+                    return FilledButton(
+                      onPressed: isDeleteTyped ? () async {
+                        // Dismiss keyboard first
+                        FocusScope.of(dialogContext).unfocus();
+
+                        // Small delay to let keyboard close
+                        await Future.delayed(const Duration(milliseconds: 150));
+
+                        // Close dialog
+                        if (dialogContext.mounted) {
+                          Navigator.pop(dialogContext);
+                        }
+
+                        // Show confirmation after dialog is closed
+                        await Future.delayed(const Duration(milliseconds: 100));
+                        if (context.mounted) {
+                          _performAccountDeletion(context, theme);
+                        }
+                      } : null,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: theme.colorScheme.error,
+                        foregroundColor: theme.colorScheme.onError,
+                        disabledBackgroundColor: theme.colorScheme.onSurface.withValues(alpha: 0.12),
+                        disabledForegroundColor: theme.colorScheme.onSurface.withValues(alpha: 0.38),
+                      ),
+                      child: const Text('Delete Account'),
+                    );
+                  },
                 ),
               ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-                // Dispose after dialog closes
-                Future.delayed(const Duration(milliseconds: 100), () {
-                  if (!isDisposed) {
-                    confirmController.dispose();
-                    isDisposed = true;
-                  }
-                });
-              },
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                if (confirmController.text.trim().toUpperCase() != 'DELETE') {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: const Text('Please type DELETE to confirm'),
-                        backgroundColor: theme.colorScheme.error,
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
-                  }
-                  return;
-                }
-
-                // Close dialog FIRST
-                Navigator.pop(dialogContext);
-
-                // Dispose controller AFTER a delay to let animation finish
-                Future.delayed(const Duration(milliseconds: 300), () {
-                  if (!isDisposed) {
-                    confirmController.dispose();
-                    isDisposed = true;
-                  }
-                });
-
-                // Show confirmation after dialog is closed
-                if (context.mounted) {
-                  await Future.delayed(const Duration(milliseconds: 100));
-                  if (context.mounted) {
-                    _performAccountDeletion(context, theme);
-                  }
-                }
-              },
-              style: FilledButton.styleFrom(
-                backgroundColor: theme.colorScheme.error,
-                foregroundColor: theme.colorScheme.onError,
-              ),
-              child: const Text('Delete Account'),
-            ),
-          ],
+            );
+          },
         ),
       ),
     ).then((_) {
-      // Safety net: dispose if still not disposed after dialog closes
-      Future.delayed(const Duration(milliseconds: 400), () {
-        if (!isDisposed) {
-          try {
-            confirmController.dispose();
-            isDisposed = true;
-          } catch (_) {
-            // Already disposed, ignore
+      // Dispose controller AFTER dialog is completely closed and animations are done
+      if (!isDisposed) {
+        // Use a longer delay to ensure all animations have completed
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (!isDisposed) {
+            try {
+              confirmController.dispose();
+              isDisposed = true;
+            } catch (e) {
+              // Already disposed or still in use, ignore
+              AppLogger.warning('Controller disposal caught: $e', tag: 'SettingsScreen');
+            }
           }
-        }
-      });
+        });
+      }
     });
   }
 

@@ -60,6 +60,8 @@ class MoodLogScreenState extends State<MoodLogScreen>
   late AnimationController _fadeController;
   late AnimationController _calendarExpandController;
 
+  bool _isLoading = true;
+
   // Commonly used formatters
   static final _dateKeyFormat = DateFormat('yyyy-MM-dd');
   static final _timeFormat = DateFormat('h:mm a');
@@ -119,12 +121,12 @@ class MoodLogScreenState extends State<MoodLogScreen>
   List<MoodEntry> get allEntries => _isOnboardingActive
       ? widget.moodService.entriesExcludingTestData
       : widget.moodService.entries;
-  
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    AppLogger.lifecycle('MoodLogScreen initialized', tag: 'MoodLog');
+    AppLogger.lifecycle('MoodLogScreen initialized - LOADING STATE: $_isLoading', tag: 'MoodLog');
 
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 600),
@@ -182,44 +184,10 @@ class MoodLogScreenState extends State<MoodLogScreen>
       AppLogger.success('Date filter applied (calendar collapsed)', tag: 'MoodLog');
     }
 
-    // Scroll to initial date or bottom after build completes AND data is loaded
+    // Initialize and wait for data to load before showing UI
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Wait for mood service to finish loading
-      Future.delayed(const Duration(milliseconds: 300), () {
-        if (!mounted) return;
-
-        if (widget.initialDate != null) {
-          // If we have an initial date, scroll to it
-          AppLogger.info('Scrolling to initial date: ${widget.initialDate}', tag: 'MoodLog');
-          _scrollToDate(widget.initialDate!);
-        } else {
-          // Always scroll to absolute bottom (most recent)
-          AppLogger.info('Scrolling to bottom (most recent)', tag: 'MoodLog');
-          _fadeController.forward();
-
-          // Additional delay to ensure list is built with all entries
-          Future.delayed(const Duration(milliseconds: 100), () {
-            if (_scrollController.hasClients && mounted) {
-              final maxExtent = _scrollController.position.maxScrollExtent;
-              AppLogger.info('Max scroll extent: $maxExtent', tag: 'MoodLog');
-
-              if (maxExtent > 0) {
-                _scrollController.jumpTo(maxExtent);
-                AppLogger.success('Scrolled to bottom: $maxExtent', tag: 'MoodLog');
-              } else {
-                AppLogger.warning('No scroll extent yet, retrying...', tag: 'MoodLog');
-                // Retry once more if list isn't ready
-                Future.delayed(const Duration(milliseconds: 200), () {
-                  if (_scrollController.hasClients && mounted) {
-                    _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
-                    AppLogger.success('Scrolled to bottom (retry)', tag: 'MoodLog');
-                  }
-                });
-              }
-            }
-          });
-        }
-      });
+      AppLogger.info('Post-frame callback - calling _initializeData', tag: 'MoodLog');
+      _initializeData();
     });
 
     widget.moodService.addListener(_onMoodServiceUpdate);
@@ -227,6 +195,58 @@ class MoodLogScreenState extends State<MoodLogScreen>
 
     // Add scroll listener to detect if user is at bottom
     _scrollController.addListener(_onScroll);
+  }
+
+  Future<void> _initializeData() async {
+    AppLogger.info('_initializeData called - LOADING STATE: $_isLoading', tag: 'MoodLog');
+
+    // Wait for mood service to finish loading
+    await Future.delayed(const Duration(milliseconds: 800)); // Increased delay to make it visible
+
+    if (!mounted) {
+      AppLogger.warning('Not mounted, skipping state update', tag: 'MoodLog');
+      return;
+    }
+
+    AppLogger.info('Setting _isLoading to false', tag: 'MoodLog');
+    setState(() {
+      _isLoading = false;
+    });
+
+    AppLogger.success('MoodLogScreen data loaded - LOADING STATE: $_isLoading', tag: 'MoodLog');
+
+    // Now handle scrolling after data is loaded
+    if (widget.initialDate != null) {
+      // If we have an initial date, scroll to it
+      AppLogger.info('Scrolling to initial date: ${widget.initialDate}', tag: 'MoodLog');
+      _scrollToDate(widget.initialDate!);
+    } else {
+      // Always scroll to absolute bottom (most recent)
+      AppLogger.info('Scrolling to bottom (most recent)', tag: 'MoodLog');
+      _fadeController.forward();
+
+      // Additional delay to ensure list is built with all entries
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (_scrollController.hasClients && mounted) {
+          final maxExtent = _scrollController.position.maxScrollExtent;
+          AppLogger.info('Max scroll extent: $maxExtent', tag: 'MoodLog');
+
+          if (maxExtent > 0) {
+            _scrollController.jumpTo(maxExtent);
+            AppLogger.success('Scrolled to bottom: $maxExtent', tag: 'MoodLog');
+          } else {
+            AppLogger.warning('No scroll extent yet, retrying...', tag: 'MoodLog');
+            // Retry once more if list isn't ready
+            Future.delayed(const Duration(milliseconds: 200), () {
+              if (_scrollController.hasClients && mounted) {
+                _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+                AppLogger.success('Scrolled to bottom (retry)', tag: 'MoodLog');
+              }
+            });
+          }
+        }
+      });
+    }
   }
 
   void _onScroll() {
@@ -315,12 +335,13 @@ class MoodLogScreenState extends State<MoodLogScreen>
       setState(() => _isKeyboardVisible = isKeyboardNowVisible);
 
       if (_isKeyboardVisible) {
-        _sliderExpansionTimer = Timer(const Duration(milliseconds: 150), () {
-          if (mounted && _isKeyboardVisible && _messageController.text.isEmpty &&
-              _editingEntryId == null && !_isDialogOpen && !_isOnboardingActive) {
-            setState(() => _isInputExpanded = true);
-          }
-        });
+        // Remove the timer delay - expand immediately for smoother animation
+        if (_messageController.text.isEmpty &&
+            _editingEntryId == null &&
+            !_isDialogOpen &&
+            !_isOnboardingActive) {
+          setState(() => _isInputExpanded = true);
+        }
       } else {
         _sliderExpansionTimer?.cancel();
         setState(() => _isInputExpanded = false);
@@ -534,8 +555,53 @@ class MoodLogScreenState extends State<MoodLogScreen>
   @override
   Widget build(BuildContext context) {
     PerformanceTestHelper.recordBuild('MoodLogScreen');
+    AppLogger.debug('Building MoodLogScreen - LOADING STATE: $_isLoading', tag: 'MoodLog');
 
     final theme = Theme.of(context);
+
+    // Show loading screen while initializing
+    if (_isLoading) {
+      AppLogger.info('Rendering loading screen', tag: 'MoodLog');
+      return Scaffold(
+        backgroundColor: theme.scaffoldBackgroundColor,
+        body: SafeArea(
+          child: Column(
+            children: [
+              _buildHeader(theme),
+              Expanded(
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: 40,
+                        height: 40,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 3,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            theme.colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        'Loading your mood diary...',
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    AppLogger.info('Rendering full mood diary UI', tag: 'MoodLog');
+
     final now = DateTime.now();
     final isToday = _selectedStartDate == null ||
         (_selectedStartDate!.year == now.year &&
@@ -577,7 +643,7 @@ class MoodLogScreenState extends State<MoodLogScreen>
                 ],
               ),
 
-// Scroll to bottom button with smooth animations
+              // Scroll to bottom button with smooth animations
               if (isToday)
                 Positioned(
                   bottom: 100, // Just above the input area
@@ -1993,14 +2059,14 @@ class MoodLogScreenState extends State<MoodLogScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-// Mood slider - animated height
+              // Mood slider - animated height
               ClipRect(
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 250),
-                  curve: Curves.easeInOutCubic,
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOut,
                   height: (_isInputExpanded || _onboardingSliderExpanded) ? 80 : 0,
                   child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 150),
+                    duration: const Duration(milliseconds: 100),
                     opacity: (_isInputExpanded || _onboardingSliderExpanded) ? 1 : 0,
                     child: (_isInputExpanded || _onboardingSliderExpanded)
                         ? SingleChildScrollView(
