@@ -27,6 +27,21 @@ android {
         versionName = flutter.versionName
     }
     
+    // Add flavors
+    flavorDimensions += "environment"
+    
+    productFlavors {
+        create("dev") {
+            dimension = "environment"
+            applicationIdSuffix = ".dev"
+            resValue("string", "app_name", "D : Self Sync")
+        }
+        create("prod") {
+            dimension = "environment"
+            resValue("string", "app_name", "P : Self Sync")
+        }
+    }
+    
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("debug")
