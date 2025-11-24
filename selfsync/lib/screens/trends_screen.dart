@@ -465,7 +465,7 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
   }
 
   Widget _buildTimeRangeSelector(ThemeData theme) {
-    final ranges = ['7D', '30D', '3M', '1Y', 'Lifetime', 'Custom'];
+    final ranges = ['7D', '30D', '3M', 'YTD', 'Year', 'Lifetime', 'Custom'];
 
     return Column(
       children: [
@@ -477,70 +477,91 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
           ),
           child: Row(
             key: widget.datePresetsKey,
-            children: ranges.map((range) {
+            children: ranges.asMap().entries.map((entry) {
+              final index = entry.key;
+              final range = entry.value;
               final isSelected = _selectedRange == range;
+              final isLast = index == ranges.length - 1;
+
               return Expanded(
-                child: GestureDetector(
-                  onTap: () {
-                    AppLogger.info(
-                        'Time range changed: $_selectedRange → $range',
-                        tag: 'TrendsScreen.Selector'
-                    );
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          AppLogger.info(
+                              'Time range changed: $_selectedRange → $range',
+                              tag: 'TrendsScreen.Selector'
+                          );
 
-                    if (range == 'Custom') {
-                      setState(() {
-                        _isCalendarExpanded = !_isCalendarExpanded;
-                        _selectedRange = range;
-                        if (_isCalendarExpanded) {
-                          _calendarExpandController.forward();
-                        } else {
-                          _calendarExpandController.reverse();
-                        }
-                      });
-                    } else {
-                      setState(() {
-                        _selectedRange = range;
-                        _isCalendarExpanded = false;
-                        _customStartDate = null;
-                        _customEndDate = null;
-                        _calendarExpandController.reverse();
-                      });
+                          if (range == 'Custom') {
+                            setState(() {
+                              _isCalendarExpanded = !_isCalendarExpanded;
+                              _selectedRange = range;
+                              if (_isCalendarExpanded) {
+                                _calendarExpandController.forward();
+                              } else {
+                                _calendarExpandController.reverse();
+                              }
+                            });
+                          } else {
+                            setState(() {
+                              _selectedRange = range;
+                              _isCalendarExpanded = false;
+                              _customStartDate = null;
+                              _customEndDate = null;
+                              _calendarExpandController.reverse();
+                            });
 
-                      // Progress onboarding when date range is tapped during step 11
-                      if (_isOnboardingActive && _onboardingStep == 11) {
-                        AppLogger.info('Date range selected during onboarding - progressing', tag: 'Onboarding');
-                        OnboardingController.nextStep();
-                      }
-                    }
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    decoration: BoxDecoration(
-                      color: isSelected ? theme.colorScheme.surface : Colors.transparent,
-                      borderRadius: BorderRadius.circular(8),
-                      boxShadow: isSelected
-                          ? [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.1),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
+                            // Progress onboarding when date range is tapped during step 11
+                            if (_isOnboardingActive && _onboardingStep == 11) {
+                              AppLogger.info('Date range selected during onboarding - progressing', tag: 'Onboarding');
+                              OnboardingController.nextStep();
+                            }
+                          }
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            color: isSelected ? theme.colorScheme.surface : Colors.transparent,
+                            borderRadius: BorderRadius.circular(8),
+                            boxShadow: isSelected
+                                ? [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.1),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ]
+                                : null,
+                          ),
+                          child: Text(
+                            range,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                              color: isSelected
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                            ),
+                          ),
                         ),
-                      ]
-                          : null,
-                    ),
-                    child: Text(
-                      range,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: isSelected
-                            ? theme.colorScheme.primary
-                            : theme.colorScheme.onSurface.withValues(alpha: 0.6),
                       ),
                     ),
-                  ),
+                    if (!isLast)
+                      // Seperate buttons with vertical lines
+                      if (!isLast)
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          width: 1,
+                          height: 16,
+                          color: (isSelected || _selectedRange == ranges[index + 1])
+                              ? Colors.transparent
+                              : theme.colorScheme.onSurface.withValues(alpha: 0.12),
+                        ),
+                  ],
                 ),
               );
             }).toList(),
@@ -612,6 +633,26 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
   }
 
   Widget _buildMonthYearSelector(ThemeData theme) {
+    final now = DateTime.now();
+    final currentMonth = DateTime(now.year, now.month);
+
+    // Get earliest month with data
+    final earliestDate = widget.moodService.entries.isEmpty
+        ? now
+        : widget.moodService.entries.last.timestamp;
+    final earliestMonth = DateTime(earliestDate.year, earliestDate.month);
+
+    // Check if we can navigate
+    final canGoBack = DateTime(_selectedCalendarMonth.year, _selectedCalendarMonth.month - 1)
+        .isAfter(DateTime(earliestMonth.year, earliestMonth.month - 1)) ||
+        DateTime(_selectedCalendarMonth.year, _selectedCalendarMonth.month - 1)
+            .isAtSameMomentAs(earliestMonth);
+
+    final canGoForward = DateTime(_selectedCalendarMonth.year, _selectedCalendarMonth.month + 1)
+        .isBefore(DateTime(currentMonth.year, currentMonth.month + 1)) ||
+        DateTime(_selectedCalendarMonth.year, _selectedCalendarMonth.month + 1)
+            .isAtSameMomentAs(currentMonth);
+
     return Column(
       children: [
         Row(
@@ -620,16 +661,18 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
             IconButton(
               icon: Icon(
                 Icons.chevron_left_rounded,
-                color: theme.colorScheme.primary,
+                color: canGoBack
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurface.withValues(alpha: 0.2),
               ),
-              onPressed: () {
+              onPressed: canGoBack ? () {
                 setState(() {
                   _selectedCalendarMonth = DateTime(
                     _selectedCalendarMonth.year,
                     _selectedCalendarMonth.month - 1,
                   );
                 });
-              },
+              } : null,
             ),
 
             // Month button
@@ -726,16 +769,18 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
             IconButton(
               icon: Icon(
                 Icons.chevron_right_rounded,
-                color: theme.colorScheme.primary,
+                color: canGoForward
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurface.withValues(alpha: 0.2),
               ),
-              onPressed: () {
+              onPressed: canGoForward ? () {
                 setState(() {
                   _selectedCalendarMonth = DateTime(
                     _selectedCalendarMonth.year,
                     _selectedCalendarMonth.month + 1,
                   );
                 });
-              },
+              } : null,
             ),
           ],
         ),
@@ -776,6 +821,15 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
   }
 
   Widget _buildMonthPicker(ThemeData theme) {
+    final now = DateTime.now();
+    final currentMonth = DateTime(now.year, now.month);
+
+    // Get earliest month with data
+    final earliestDate = widget.moodService.entries.isEmpty
+        ? now
+        : widget.moodService.entries.last.timestamp;
+    final earliestMonth = DateTime(earliestDate.year, earliestDate.month);
+
     return Material(
       elevation: 8,
       borderRadius: BorderRadius.circular(12),
@@ -797,24 +851,36 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
           diameterRatio: 1.5,
           physics: const FixedExtentScrollPhysics(),
           onSelectedItemChanged: (index) {
-            HapticFeedback.selectionClick();
-            setState(() {
-              _selectedCalendarMonth = DateTime(
-                _selectedCalendarMonth.year,
-                index + 1,
-              );
-            });
+            final selectedMonth = DateTime(_selectedCalendarMonth.year, index + 1);
+
+            // Check if this month is valid (has data and not in future)
+            final isInFuture = selectedMonth.isAfter(currentMonth);
+            final isBeforeData = selectedMonth.isBefore(earliestMonth);
+
+            if (!isInFuture && !isBeforeData) {
+              HapticFeedback.selectionClick();
+              setState(() {
+                _selectedCalendarMonth = selectedMonth;
+              });
+            }
           },
           children: List.generate(12, (index) {
             final month = DateTime(_selectedCalendarMonth.year, index + 1);
             final isSelected = index == _selectedCalendarMonth.month - 1;
+
+            // Check if this month is valid
+            final isInFuture = month.isAfter(currentMonth);
+            final isBeforeData = month.isBefore(earliestMonth);
+            final isDisabled = isInFuture || isBeforeData;
 
             return Center(
               child: Text(
                 _monthFormat.format(month),
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  color: isSelected
+                  color: isDisabled
+                      ? theme.colorScheme.onSurface.withValues(alpha: 0.25)
+                      : isSelected
                       ? theme.colorScheme.primary
                       : theme.colorScheme.onSurface.withValues(alpha: 0.6),
                   fontSize: isSelected ? 18 : 16,
@@ -829,9 +895,13 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
 
   Widget _buildYearPicker(ThemeData theme) {
     final currentYear = DateTime.now().year;
-    final earliestYear = widget.moodService.entries.isEmpty
-        ? currentYear - 10
-        : widget.moodService.entries.map((e) => e.timestamp.year).reduce((a, b) => a < b ? a : b);
+    final currentMonth = DateTime.now().month;
+
+    // Get earliest year with data
+    final earliestDate = widget.moodService.entries.isEmpty
+        ? DateTime.now()
+        : widget.moodService.entries.last.timestamp;
+    final earliestYear = earliestDate.year;
 
     final years = List.generate(
       currentYear - earliestYear + 1,
@@ -861,12 +931,24 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
           diameterRatio: 1.5,
           physics: const FixedExtentScrollPhysics(),
           onSelectedItemChanged: (index) {
+            final selectedYear = years[index];
+
+            // When changing year, clamp the month to valid range
+            int newMonth = _selectedCalendarMonth.month;
+
+            // If selecting current year, can't go past current month
+            if (selectedYear == currentYear && newMonth > currentMonth) {
+              newMonth = currentMonth;
+            }
+
+            // If selecting earliest year, can't go before earliest month
+            if (selectedYear == earliestYear && newMonth < earliestDate.month) {
+              newMonth = earliestDate.month;
+            }
+
             HapticFeedback.selectionClick();
             setState(() {
-              _selectedCalendarMonth = DateTime(
-                years[index],
-                _selectedCalendarMonth.month,
-              );
+              _selectedCalendarMonth = DateTime(selectedYear, newMonth);
             });
           },
           children: List.generate(years.length, (index) {
@@ -1967,7 +2049,7 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
     if (entries.isEmpty) return const SizedBox.shrink();
 
     // Determine calendar style based on selected range
-    final isLongRange = _selectedRange == '1Y' || _selectedRange == 'Lifetime';
+    final isLongRange = _selectedRange == 'Year' || _selectedRange == 'Lifetime' || _selectedRange == 'YTD';
 
     // Check if custom range is long (more than 90 days)
     final isCustomLongRange = _selectedRange == 'Custom' &&
@@ -1979,13 +2061,13 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
       return _buildGridCalendar(theme, entries);
     } else {
       return _buildLinearCalendar(theme, entries);
-    } 
+    }
   }
 
   Widget _buildLinearCalendar(ThemeData theme, List<MoodEntry> entries) {
     final now = DateTime.now();
-    DateTime startDate;
-    DateTime endDate;
+    late DateTime startDate;
+    late DateTime endDate;
 
     // Handle custom date range
     if (_selectedRange == 'Custom' && _customStartDate != null && _customEndDate != null) {
@@ -1993,7 +2075,8 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
       endDate = DateTime(_customEndDate!.year, _customEndDate!.month, _customEndDate!.day);
     } else {
       // Default behavior for preset ranges
-      int daysToShow;
+      int daysToShow = 7; // Initialize with default value
+
       switch (_selectedRange) {
         case '7D':
           daysToShow = 7;
@@ -2004,6 +2087,12 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
         case '3M':
           daysToShow = 90;
           break;
+        case 'YTD':
+        // Year to date - from Jan 1 to today
+          startDate = DateTime(now.year, 1, 1);
+          endDate = DateTime(now.year, now.month, now.day);
+          daysToShow = -1; // Flag to use calculated dates
+          break;
         case 'Custom':
         // Custom selected but no dates - show last 7 days
           daysToShow = 7;
@@ -2012,8 +2101,10 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
           daysToShow = 7;
       }
 
-      endDate = DateTime(now.year, now.month, now.day);
-      startDate = endDate.subtract(Duration(days: daysToShow - 1));
+      if (daysToShow > 0) {
+        endDate = DateTime(now.year, now.month, now.day);
+        startDate = endDate.subtract(Duration(days: daysToShow - 1));
+      }
     }
 
     // Count entries per day
@@ -2240,7 +2331,8 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
                 'Less',
                 style: TextStyle(
                   fontSize: 10,
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.7),),
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                ),
               ),
               const SizedBox(width: 6),
               _buildLegendBox(
@@ -2257,7 +2349,8 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
                 'More',
                 style: TextStyle(
                   fontSize: 10,
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.7),),
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                ),
               ),
             ],
           ),
@@ -2275,11 +2368,20 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
     if (_selectedRange == 'Custom' && _customStartDate != null && _customEndDate != null) {
       startDate = DateTime(_customStartDate!.year, _customStartDate!.month, _customStartDate!.day);
       endDate = DateTime(_customEndDate!.year, _customEndDate!.month, _customEndDate!.day);
-    } else if (_selectedRange == '1Y') {
+    } else if (_selectedRange == 'Year') {
+      // Full current calendar year
+      startDate = DateTime(now.year, 1, 1);
+      endDate = DateTime(now.year, 12, 31);
+    } else if (_selectedRange == 'YTD') {
+      // Rolling 12 months ending today
       startDate = DateTime(now.year - 1, now.month, now.day);
       endDate = DateTime(now.year, now.month, now.day);
+    } else if (_selectedRange == 'Lifetime') {
+      // Lifetime - all data
+      startDate = entries.isNotEmpty ? entries.last.timestamp : now.subtract(const Duration(days: 365));
+      endDate = DateTime(now.year, now.month, now.day);
     } else {
-      // Lifetime
+      // Fallback
       startDate = entries.isNotEmpty ? entries.last.timestamp : now.subtract(const Duration(days: 365));
       endDate = DateTime(now.year, now.month, now.day);
     }
@@ -2385,104 +2487,114 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
                     ),
                   ),
 
-                  // Month headers
+                  // Month headers and grid
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SizedBox(width: 24), // Space for day numbers
-                      ...months.map((month) {
-                        return Expanded(
-                          child: Center(
-                            child: Text(
-                              DateFormat('MMM').format(month).substring(0, 1),
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                              ),
-                            ),
-                          ),
-                        );
-                      }),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Day rows (1-31)
-                  ...List.generate(31, (dayIndex) {
-                    final dayNumber = dayIndex + 1;
-
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 2),
-                      child: Row(
-                        children: [
-                          // Day number
-                          SizedBox(
-                            width: 24,
-                            child: Text(
-                              '$dayNumber',
-                              style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w500,
-                                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                              ),
-                              textAlign: TextAlign.right,
-                            ),
-                          ),
-                          // Month cells
-                          ...months.map((month) {
-                            // Check if this day exists in this month
-                            final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
-
-                            if (dayNumber > daysInMonth) {
-                              // Day doesn't exist in this month
-                              return Expanded(
-                                child: Container(
-                                  height: 14,
-                                  margin: const EdgeInsets.all(1),
+                      // Day numbers column (left side)
+                      SizedBox(
+                        width: 24,
+                        child: Column(
+                          children: [
+                            const SizedBox(height: 24), // Space for month headers
+                            ...List.generate(31, (dayIndex) {
+                              final dayNumber = dayIndex + 1;
+                              return Container(
+                                height: 14,
+                                margin: const EdgeInsets.only(bottom: 2),
+                                alignment: Alignment.centerRight,
+                                child: Text(
+                                  '$dayNumber',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w500,
+                                    color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                                  ),
                                 ),
                               );
-                            }
-
-                            // Get the date for this cell
-                            final cellDate = DateTime(month.year, month.month, dayNumber);
-                            final count = dailyCounts[cellDate] ?? 0;
-
-                            final isDark = theme.brightness == Brightness.dark;
-                            Color boxColor;
-                            Color? borderColor;
-                            if (count == 0) {
-                              boxColor = isDark
-                                  ? theme.colorScheme.onSurface.withValues(alpha: 0.08)
-                                  : Colors.grey[200]!;
-                              borderColor = isDark
-                                  ? theme.colorScheme.onSurface.withValues(alpha: 0.3)
-                                  : Colors.grey[400];
-                            } else if (count == 1) {
-                              boxColor = theme.colorScheme.primary.withValues(alpha: 0.3);
-                            } else if (count == 2) {
-                              boxColor = theme.colorScheme.primary.withValues(alpha: 0.6);
-                            } else {
-                              boxColor = theme.colorScheme.primary;
-                            }
-
-                            return Expanded(
-                              child: Container(
-                                height: 14,
-                                margin: const EdgeInsets.all(1),
-                                decoration: BoxDecoration(
-                                  color: boxColor,
-                                  borderRadius: BorderRadius.circular(2),
-                                  border: borderColor != null
-                                      ? Border.all(color: borderColor, width: 1)
-                                      : null,
-                                ),
-                              ),
-                            );
-                          }),
-                        ],
+                            }),
+                          ],
+                        ),
                       ),
-                    );
-                  }),
+
+                      // Month columns
+                      Expanded(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: months.map((month) {
+                              return SizedBox(
+                                width: 24, // Fixed width for square cells
+                                child: Column(
+                                  children: [
+                                    // Month header
+                                    SizedBox(
+                                      height: 24,
+                                      child: Center(
+                                        child: Text(
+                                          DateFormat('MMM').format(month).substring(0, 1),
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    // Day cells
+                                    ...List.generate(31, (dayIndex) {
+                                      final dayNumber = dayIndex + 1;
+                                      final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
+
+                                      if (dayNumber > daysInMonth) {
+                                        return Container(
+                                          height: 14,
+                                          margin: const EdgeInsets.only(bottom: 2),
+                                        );
+                                      }
+
+                                      final cellDate = DateTime(month.year, month.month, dayNumber);
+                                      final count = dailyCounts[cellDate] ?? 0;
+
+                                      final isDark = theme.brightness == Brightness.dark;
+                                      Color boxColor;
+                                      Color? borderColor;
+                                      if (count == 0) {
+                                        boxColor = isDark
+                                            ? theme.colorScheme.onSurface.withValues(alpha: 0.08)
+                                            : Colors.grey[200]!;
+                                        borderColor = isDark
+                                            ? theme.colorScheme.onSurface.withValues(alpha: 0.3)
+                                            : Colors.grey[400];
+                                      } else if (count == 1) {
+                                        boxColor = theme.colorScheme.primary.withValues(alpha: 0.3);
+                                      } else if (count == 2) {
+                                        boxColor = theme.colorScheme.primary.withValues(alpha: 0.6);
+                                      } else {
+                                        boxColor = theme.colorScheme.primary;
+                                      }
+
+                                      return Container(
+                                        height: 14,
+                                        margin: const EdgeInsets.only(bottom: 2, left: 1, right: 1),
+                                        decoration: BoxDecoration(
+                                          color: boxColor,
+                                          borderRadius: BorderRadius.circular(2),
+                                          border: borderColor != null
+                                              ? Border.all(color: borderColor, width: 1)
+                                              : null,
+                                        ),
+                                      );
+                                    }),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             );
@@ -3012,17 +3124,17 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
 
     final now = DateTime.now();
 
-    // For 1Y and Lifetime, compare current year vs previous year
-    if (range == '1Y' || range == 'Lifetime') {
+    // For Year and Lifetime, compare current year vs previous year
+    if (range == 'Year' || range == 'Lifetime') {
       final currentYear = now.year;
       final previousYear = currentYear - 1;
 
-      // Current year entries
+      // Current year entries (full year)
       final currentYearEntries = allEntries.where((e) {
         return e.timestamp.year == currentYear;
       }).toList();
 
-      // Previous year entries
+      // Previous year entries (full year)
       final previousYearEntries = allEntries.where((e) {
         return e.timestamp.year == previousYear;
       }).toList();
@@ -3047,6 +3159,49 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
         'isYearlyComparison': true,
         'currentYear': currentYear,
         'previousYear': previousYear,
+      };
+    }
+
+    // For YTD, compare rolling 12 months vs previous 12 months
+    if (range == 'YTD') {
+      final today = DateTime(now.year, now.month, now.day);
+      final oneYearAgo = DateTime(now.year - 1, now.month, now.day);
+      final twoYearsAgo = DateTime(now.year - 2, now.month, now.day);
+
+      // Current YTD entries (past 12 months)
+      final currentYTDEntries = allEntries.where((e) {
+        final entryDate = DateTime(e.timestamp.year, e.timestamp.month, e.timestamp.day);
+        return (entryDate.isAfter(oneYearAgo) || entryDate.isAtSameMomentAs(oneYearAgo)) &&
+            (entryDate.isBefore(today) || entryDate.isAtSameMomentAs(today));
+      }).toList();
+
+      // Previous 12 months
+      final previousYTDEntries = allEntries.where((e) {
+        final entryDate = DateTime(e.timestamp.year, e.timestamp.month, e.timestamp.day);
+        return (entryDate.isAfter(twoYearsAgo) || entryDate.isAtSameMomentAs(twoYearsAgo)) &&
+            entryDate.isBefore(oneYearAgo);
+      }).toList();
+
+      if (currentYTDEntries.isEmpty || previousYTDEntries.isEmpty) {
+        return {'hasComparison': false};
+      }
+
+      final currentAvg = currentYTDEntries.fold<int>(0, (sum, e) => sum + e.moodRating) / currentYTDEntries.length;
+      final previousAvg = previousYTDEntries.fold<int>(0, (sum, e) => sum + e.moodRating) / previousYTDEntries.length;
+      final change = currentAvg - previousAvg;
+      final percentChange = (change / previousAvg * 100);
+
+      return {
+        'hasComparison': true,
+        'currentAvg': currentAvg,
+        'previousAvg': previousAvg,
+        'change': change,
+        'percentChange': percentChange,
+        'currentCount': currentYTDEntries.length,
+        'previousCount': previousYTDEntries.length,
+        'isYearlyComparison': true,
+        'currentYear': 'Past 12 mo',
+        'previousYear': 'Prior 12 mo',
       };
     }
 
@@ -3146,11 +3301,22 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
     String previousPeriodLabel;
 
     if (isYearlyComparison) {
-      final currentYear = comparisonData['currentYear'] as int;
-      final previousYear = comparisonData['previousYear'] as int;
-      periodLabel = '$currentYear vs $previousYear';
-      currentPeriodLabel = currentYear.toString();
-      previousPeriodLabel = previousYear.toString();
+      final currentYearValue = comparisonData['currentYear'];
+      final previousYearValue = comparisonData['previousYear'];
+
+      // Handle both int (for Year filter) and String (for YTD filter)
+      final currentYearLabel = currentYearValue is int ? currentYearValue.toString() : currentYearValue as String;
+      final previousYearLabel = previousYearValue is int ? previousYearValue.toString() : previousYearValue as String;
+
+      if (_selectedRange == 'YTD') {
+        periodLabel = 'Past 12 Months vs Prior 12 Months';
+        currentPeriodLabel = currentYearLabel;
+        previousPeriodLabel = previousYearLabel;
+      } else {
+        periodLabel = '$currentYearLabel vs $previousYearLabel';
+        currentPeriodLabel = currentYearLabel;
+        previousPeriodLabel = previousYearLabel;
+      }
     } else {
       switch (_selectedRange) {
         case '7D':
@@ -3406,6 +3572,44 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
       return filtered;
     }
 
+    // Handle YTD (Year to Date) - Rolling 12 months ending today
+    if (range == 'YTD') {
+      final today = DateTime(now.year, now.month, now.day);
+      final oneYearAgo = DateTime(now.year - 1, now.month, now.day);
+
+      final filtered = allEntries.where((e) {
+        final entryDate = DateTime(e.timestamp.year, e.timestamp.month, e.timestamp.day);
+        return (entryDate.isAfter(oneYearAgo) || entryDate.isAtSameMomentAs(oneYearAgo)) &&
+            (entryDate.isBefore(today) || entryDate.isAtSameMomentAs(today));
+      }).toList();
+
+      AppLogger.success('YTD: ${filtered.length} entries from $oneYearAgo to $today', tag: 'TrendsScreen.Filter');
+      return filtered;
+    }
+
+    // Handle full Year (current calendar year Jan 1 - Dec 31)
+    if (range == 'Year') {
+      final startOfYear = DateTime(now.year, 1, 1);
+      final endOfYear = DateTime(now.year, 12, 31);
+
+      final filtered = allEntries.where((e) {
+        final entryDate = DateTime(e.timestamp.year, e.timestamp.month, e.timestamp.day);
+        return (entryDate.isAfter(startOfYear) || entryDate.isAtSameMomentAs(startOfYear)) &&
+            (entryDate.isBefore(endOfYear) || entryDate.isAtSameMomentAs(endOfYear));
+      }).toList();
+
+      AppLogger.success('Year: ${filtered.length} entries from $startOfYear to $endOfYear', tag: 'TrendsScreen.Filter');
+      return filtered;
+    }
+
+    // Handle Lifetime
+    if (range == 'Lifetime') {
+      AppLogger.success('Lifetime selected - returning all ${allEntries.length} entries',
+          tag: 'TrendsScreen.Filter'
+      );
+      return allEntries;
+    }
+
     DateTime cutoff;
 
     switch (range) {
@@ -3418,14 +3622,6 @@ class TrendsScreenState extends State<TrendsScreen> with TickerProviderStateMixi
       case '3M':
         cutoff = now.subtract(const Duration(days: 90));
         break;
-      case '1Y':
-        cutoff = now.subtract(const Duration(days: 365));
-        break;
-      case 'Lifetime':
-        AppLogger.success('Lifetime selected - returning all ${allEntries.length} entries',
-            tag: 'TrendsScreen.Filter'
-        );
-        return allEntries;
       case 'Custom':
       // If custom is selected but no dates set, return empty
         AppLogger.warning('Custom range selected but no dates set', tag: 'TrendsScreen.Filter');
