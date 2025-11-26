@@ -623,15 +623,6 @@ class MoodLogScreenState extends State<MoodLogScreen>
                 children: [
                   _buildHeader(theme),
 
-                  // Calendar area
-                  SizeTransition(
-                    sizeFactor: CurvedAnimation(
-                      parent: _calendarExpandController,
-                      curve: Curves.easeInOutCubic,
-                    ),
-                    child: _buildCalendarArea(theme),
-                  ),
-
                   // Main content
                   Expanded(
                     child: _buildMessageList(theme),
@@ -643,8 +634,44 @@ class MoodLogScreenState extends State<MoodLogScreen>
                 ],
               ),
 
+              // Scrim to dim content when calendar open (must be BEFORE calendar in stack)
+              if (_isCalendarExpanded)
+                Positioned.fill(
+                  top: 100,
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _calendarExpandController.reverse();
+                        _isCalendarExpanded = false;
+                        _closePickers();
+                      });
+                    },
+                    child: AnimatedBuilder(
+                      animation: _calendarExpandController,
+                      builder: (context, child) => Container(
+                        color: Colors.black.withValues(alpha: 0.3 * _calendarExpandController.value),
+                      ),
+                    ),
+                  ),
+                ),
+
+              // Calendar overlay - expands down from header
+              Positioned(
+                top: 100, // Header height
+                left: 0,
+                right: 0,
+                child: SizeTransition(
+                  sizeFactor: CurvedAnimation(
+                    parent: _calendarExpandController,
+                    curve: Curves.easeOutCubic,
+                  ),
+                  axisAlignment: -1.0, // Expand downward from top
+                  child: _buildCalendarArea(theme),
+                ),
+              ),
+
               // Scroll to bottom button with smooth animations
-              if (isToday)
+              if (isToday && !_isCalendarExpanded)
                 Positioned(
                   bottom: 100, // Just above the input area
                   left: 0,
