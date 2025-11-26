@@ -1,4 +1,6 @@
 import 'dart:math';
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -12,6 +14,8 @@ import 'screens/settings_screen.dart';
 import 'screens/help_screen.dart';
 import 'screens/bug_report_screen.dart';
 import 'screens/auth_screen.dart';
+import 'screens/error_screen.dart';
+import 'services/crash_log_service.dart';
 import 'services/auth_service.dart';
 import 'services/mood_service.dart';
 import 'services/cloud_backup_service.dart';
@@ -23,35 +27,185 @@ import 'widgets/side_drawer.dart';
 import 'widgets/interactive_tutorial_overlay.dart';
 import 'widgets/privacy_policy_dialog.dart';
 import 'widgets/loading_screen.dart';
+import '../services/crash_handler.dart';
+
+// Global navigator key for crash handling
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+// Global function to restart the app
+void restartApp() {
+  runApp(SelfSyncApp(
+    key: UniqueKey(), // Force rebuild
+    analyticsService: AnalyticsService(),
+    startTime: DateTime.now(),
+  ));
+}
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  await runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Firebase
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+    // Initialize crash log service early
+    await CrashLogService().initialize();
 
-  // Load environment variables
-  await dotenv.load(fileName: ".env");
+    // Initialize Firebase
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
 
-  final startTime = DateTime.now();
-  AppLogger.separator(label: 'SELF SYNC APP STARTUP');
-  AppLogger.lifecycle('App starting...', tag: 'Main');
+    // Load environment variables
+    await dotenv.load(fileName: ".env");
 
-  final analyticsService = AnalyticsService();
+    final startTime = DateTime.now();
+    AppLogger.separator(label: 'SELF SYNC APP STARTUP');
+    AppLogger.lifecycle('App starting...', tag: 'Main');
 
-  FlutterError.onError = (FlutterErrorDetails details) {
-    analyticsService.logFlutterError(details);
-  };
+    final analyticsService = AnalyticsService();
 
-  runApp(SelfSyncApp(
-    analyticsService: analyticsService,
-    startTime: startTime,
-  ));
+    // Set custom error widget for build/render errors
+    ErrorWidget.builder = (FlutterErrorDetails details) {
+      // Create crash log
+      final crashLog = CrashLogService().createCrashLog(
+        details.exception,
+        details.stack,
+      );
 
-  AppLogger.lifecycle('App launched successfully', tag: 'Main');
-  AppLogger.separator();
+      // In debug mode, show more details
+      if (kDebugMode) {
+        return _DebugErrorWidget(details: details);
+      }
+
+      // In release mode, show user-friendly error screen
+      return Material(
+        child: ErrorScreen(
+          errorDetails: details,
+          crashLog: crashLog,
+          onRetry: () {
+            CrashHandler.reset();
+          },
+          onGoHome: () {
+            navigatorKey.currentState?.popUntil((route) => route.isFirst);
+            CrashHandler.reset();
+          },
+        ),
+      );
+    };
+
+    // Handle Flutter framework errors
+    FlutterError.onError = (FlutterErrorDetails details) {
+      FlutterError.presentError(details);
+
+      // Log to crash service
+      CrashLogService().createCrashLog(
+        details.exception,
+        details.stack,
+      );
+
+      // Show crash dialog for non-build errors
+      if (!details.silent) {
+        CrashHandler.handleCrash(details.exception, details.stack);
+      }
+    };
+
+    // Handle errors outside of Flutter framework (gesture callbacks, async, etc.)
+    PlatformDispatcher.instance.onError = (error, stack) {
+      CrashLogService().createCrashLog(error, stack);
+
+      // Show crash dialog
+      CrashHandler.handleCrash(error, stack);
+
+      return true; // Handled
+    };
+
+    runApp(SelfSyncApp(
+      analyticsService: analyticsService,
+      startTime: startTime,
+    ));
+  }, (error, stackTrace) {
+    // Catch any errors that escape everything else
+    CrashLogService().createCrashLog(error, stackTrace);
+
+    // Show fatal error screen
+    CrashHandler.handleCrash(error, stackTrace);
+
+    if (kDebugMode) {
+      // ignore: avoid_print
+      print('Unhandled error: $error');
+      // ignore: avoid_print
+      print('Stack trace: $stackTrace');
+    }
+  });
+}
+
+// Debug error widget with more details
+class _DebugErrorWidget extends StatelessWidget {
+  final FlutterErrorDetails details;
+
+  const _DebugErrorWidget({required this.details});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFFB00020),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.error_outline, color: Colors.white, size: 32),
+                  SizedBox(width: 12),
+                  Text(
+                    'Debug Error',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.black26,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  details.exceptionAsString(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Stack Trace:',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                details.stack?.toString() ?? 'No stack trace',
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontFamily: 'monospace',
+                  fontSize: 10,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class SelfSyncApp extends StatefulWidget {
@@ -75,7 +229,7 @@ class _SelfSyncAppState extends State<SelfSyncApp> {
   late final CloudBackupService _cloudBackupService;
   bool _isInitialized = false;
   bool _isMainScreenReady = false;
-  String? _lastAuthUserId; // Track user ID to detect actual auth changes
+  String? _lastAuthUserId;
 
   @override
   void initState() {
@@ -89,6 +243,12 @@ class _SelfSyncAppState extends State<SelfSyncApp> {
     _onboardingService.addListener(_onOnboardingChanged);
     _authService.addListener(_onAuthChanged);
 
+    // Initialize crash handler with navigator key and restart callback
+    CrashHandler.initialize(
+      navigatorKey: navigatorKey,
+      onRestart: restartApp,
+    );
+
     _trackStartupTime();
     _initializeApp();
   }
@@ -96,7 +256,6 @@ class _SelfSyncAppState extends State<SelfSyncApp> {
   void _onAuthChanged() {
     final currentUserId = _authService.currentUser?.uid;
 
-    // Only reset if the user actually changed (not just auth state updating)
     if (_lastAuthUserId != currentUserId) {
       AppLogger.info('Auth user changed from $_lastAuthUserId to $currentUserId', tag: 'SelfSyncApp');
       _lastAuthUserId = currentUserId;
@@ -119,7 +278,6 @@ class _SelfSyncAppState extends State<SelfSyncApp> {
   Future<void> _initializeApp() async {
     AppLogger.info('Initializing app services...', tag: 'SelfSyncApp');
 
-    // Wait for all services to initialize
     await Future.delayed(const Duration(milliseconds: 500));
 
     AppLogger.success('App initialization complete', tag: 'SelfSyncApp');
@@ -127,7 +285,7 @@ class _SelfSyncAppState extends State<SelfSyncApp> {
     if (mounted) {
       setState(() {
         _isInitialized = true;
-        _lastAuthUserId = _authService.currentUser?.uid; // Track initial user
+        _lastAuthUserId = _authService.currentUser?.uid;
       });
     }
   }
@@ -161,7 +319,8 @@ class _SelfSyncAppState extends State<SelfSyncApp> {
   Widget build(BuildContext context) {
     AppLogger.lifecycle('Building SelfSyncApp widget - isInit: $_isInitialized, isSignedIn: ${_authService.isSignedIn}, isReady: $_isMainScreenReady', tag: 'SelfSyncApp');
 
-    final materialApp = MaterialApp(
+    return MaterialApp(
+      navigatorKey: navigatorKey, // Use global navigator key
       title: 'Self Sync',
       debugShowCheckedModeBanner: false,
       theme: _themeService.getLightTheme(),
@@ -169,12 +328,9 @@ class _SelfSyncAppState extends State<SelfSyncApp> {
       themeMode: _themeService.themeMode,
       home: _buildHome(),
     );
-
-    return materialApp;
   }
 
   Widget _buildHome() {
-    // Show loading screen during initialization
     if (!_isInitialized) {
       AppLogger.info('Showing initialization loading screen', tag: 'SelfSyncApp');
       return LoadingScreen(
@@ -183,18 +339,15 @@ class _SelfSyncAppState extends State<SelfSyncApp> {
       );
     }
 
-    // Show auth screen if not signed in
     if (!_authService.isSignedIn) {
       AppLogger.info('Showing auth screen', tag: 'SelfSyncApp');
       return AuthScreen(authService: _authService);
     }
 
-    // Build MainScreen and show loading overlay while it initializes
     AppLogger.info('Building main screen (ready: $_isMainScreenReady)', tag: 'SelfSyncApp');
 
     return Stack(
       children: [
-        // Always build MainScreen so it can initialize
         MainScreen(
           themeService: _themeService,
           analyticsService: widget.analyticsService,
@@ -204,7 +357,6 @@ class _SelfSyncAppState extends State<SelfSyncApp> {
           onReady: _onMainScreenReady,
         ),
 
-        // Show loading overlay until MainScreen is ready
         if (!_isMainScreenReady)
           LoadingScreen(
             message: 'Loading your data...',
