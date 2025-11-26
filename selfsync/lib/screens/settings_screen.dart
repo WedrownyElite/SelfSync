@@ -59,6 +59,8 @@ class SettingsScreenState extends State<SettingsScreen> {
 
   final ImagePicker _imagePicker = ImagePicker();
 
+  bool _isColorThemeExpanded = false;
+
   @override
   void initState() {
     super.initState();
@@ -1908,9 +1910,12 @@ class SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _buildColorGradientSection(ThemeData theme) {
+    final selectedGradient = widget.themeService.selectedGradient;
+    final themeName = _getGradientName(selectedGradient);
+
     return Container(
       key: widget.colorThemesKey,
-      padding: const EdgeInsets.all(20),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
@@ -1923,49 +1928,121 @@ class SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            children: [
-              Icon(
-                Icons.palette_rounded,
-                size: 24,
-                color: theme.colorScheme.primary,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Color Theme',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
+          // Tappable header
+          InkWell(
+            onTap: () {
+              setState(() {
+                _isColorThemeExpanded = !_isColorThemeExpanded;
+              });
+            },
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.palette_rounded,
+                    size: 24,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Color Theme',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          _isColorThemeExpanded
+                              ? 'Changes your mood rating colors'
+                              : themeName,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Gradient preview (visible when collapsed)
+                  if (!_isColorThemeExpanded) ...[
+                    Container(
+                      width: 40,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: selectedGradient.colors.gradientColors,
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                        ),
+                        borderRadius: BorderRadius.circular(6),
                       ),
                     ),
-                    Text(
-                      'Changes your mood rating colors',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                      ),
-                    ),
+                    const SizedBox(width: 8),
                   ],
-                ),
+                  // Animated chevron
+                  AnimatedRotation(
+                    turns: _isColorThemeExpanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeInOut,
+                    child: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-          const SizedBox(height: 16),
-          Column(
-            children: ColorGradientOption.values.map((gradient) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _buildColorOption(theme: theme, gradient: gradient),
-              );
-            }).toList(),
+          // Expandable content
+          AnimatedCrossFade(
+            firstChild: const SizedBox(width: double.infinity, height: 0),
+            secondChild: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              child: Column(
+                children: ColorGradientOption.values.map((gradient) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _buildColorOption(theme: theme, gradient: gradient),
+                  );
+                }).toList(),
+              ),
+            ),
+            crossFadeState: _isColorThemeExpanded
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
+            duration: const Duration(milliseconds: 250),
+            sizeCurve: Curves.easeInOut,
           ),
         ],
       ),
     );
+  }
+
+  String _getGradientName(ColorGradientOption gradient) {
+    switch (gradient) {
+      case ColorGradientOption.purpleBlue:
+        return 'Purple Dream';
+      case ColorGradientOption.sunsetOrange:
+        return 'Sunset Glow';
+      case ColorGradientOption.oceanTeal:
+        return 'Ocean Breeze';
+      case ColorGradientOption.forestGreen:
+        return 'Forest Calm';
+      case ColorGradientOption.rosePink:
+        return 'Rose Garden';
+      case ColorGradientOption.goldenAmber:
+        return 'Golden Hour';
+      case ColorGradientOption.arcticBlue:
+        return 'Arctic Frost';
+      case ColorGradientOption.lavenderMist:
+        return 'Lavender Mist';
+    }
   }
 
   Widget _buildColorOption({
@@ -1973,35 +2050,7 @@ class SettingsScreenState extends State<SettingsScreen> {
     required ColorGradientOption gradient,
   }) {
     final isSelected = widget.themeService.selectedGradient == gradient;
-
-    // Get theme name
-    String themeName;
-    switch (gradient) {
-      case ColorGradientOption.purpleBlue:
-        themeName = 'Purple Dream';
-        break;
-      case ColorGradientOption.sunsetOrange:
-        themeName = 'Sunset Glow';
-        break;
-      case ColorGradientOption.oceanTeal:
-        themeName = 'Ocean Breeze';
-        break;
-      case ColorGradientOption.forestGreen:
-        themeName = 'Forest Calm';
-        break;
-      case ColorGradientOption.rosePink:
-        themeName = 'Rose Garden';
-        break;
-      case ColorGradientOption.goldenAmber:
-        themeName = 'Golden Hour';
-        break;
-      case ColorGradientOption.arcticBlue:
-        themeName = 'Arctic Frost';
-        break;
-      case ColorGradientOption.lavenderMist:
-        themeName = 'Lavender Mist';
-        break;
-    }
+    final themeName = _getGradientName(gradient);
 
     return InkWell(
       onTap: () async {
@@ -2028,7 +2077,6 @@ class SettingsScreenState extends State<SettingsScreen> {
         ),
         child: Row(
           children: [
-            // Gradient preview bar
             Container(
               width: 60,
               height: 36,
@@ -2049,7 +2097,6 @@ class SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
             const SizedBox(width: 12),
-            // Theme name
             Expanded(
               child: Text(
                 themeName,
@@ -2061,7 +2108,6 @@ class SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ),
-            // Checkmark for selected
             if (isSelected)
               Icon(
                 Icons.check_circle_rounded,
